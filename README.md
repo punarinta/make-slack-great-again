@@ -1,14 +1,15 @@
 # Make Slack Great Again
 
-A fast native Slack client built in C++ with Qt6.
+A fast native Slack client built in C++, on its own platform, network and graphics layers: no Electron, no web view, no GUI toolkit.
 
 ## About
 
-msga is primarily a Slack client — that's its main focus and the most complete, battle-tested backend. It also supports other messaging platforms in **experimental mode**: Microsoft Teams and email. The same Slack-like UI is used for all of them, so channels, direct messages and conversations from every connected service share one consistent interface and live side by side in the same workspace rail.
+msga is a Slack client first and foremost. Channels, DMs, threads, reactions, files and notifications all work the way you expect from Slack, in a window that starts instantly and needs a fraction of the memory of the official app. As a side feature, msga can also show your Claude Code sessions in the same workspace rail, each one as a direct message.
 
-![Platform](https://img.shields.io/badge/platform-Linux%20%7C%20macOS%20%7C%20Windows-blue)
+Everything below the UI is msga's own code: a thin OS layer for windows, input and desktop services (Wayland and X11 on Linux and the BSDs, AppKit on macOS, Win32 on Windows), an HTTP and WebSocket client (WinHTTP on Windows, NSURLSession on macOS, msga's own client over Mbed TLS on Linux and the BSDs), and a CPU renderer with FreeType and HarfBuzz for text. The first goal is a small binary that uses few resources.
+
+![Platform](https://img.shields.io/badge/platform-Linux%20%7C%20macOS%20%7C%20Windows%20%7C%20FreeBSD%20%7C%20OpenBSD-blue)
 ![C++](https://img.shields.io/badge/language-C%2B%2B20-00599C?logo=cplusplus&logoColor=white)
-![Qt](https://img.shields.io/badge/Qt-6-41CD52?logo=qt&logoColor=white)
 ![Release](https://img.shields.io/github/v/release/punarinta/make-slack-great-again)
 
 ## Demo
@@ -19,53 +20,73 @@ msga is primarily a Slack client — that's its main focus and the most complete
 
 [![Linux](https://img.shields.io/badge/Linux-x86__64-FCC624?logo=linux&logoColor=black)](https://msga.app/download/msga-linux-x86_64)
 [![macOS](https://img.shields.io/badge/macOS-Apple%20Silicon-000000?logo=apple&logoColor=white)](https://msga.app/download/msga-macos-arm64.dmg)
+[![macOS Intel](https://img.shields.io/badge/macOS-Intel-000000?logo=apple&logoColor=white)](https://msga.app/download/msga-macos-x86_64.dmg)
 [![Windows](https://img.shields.io/badge/Windows-x86__64-0078D4?logo=windows&logoColor=white)](https://msga.app/download/msga-windows-x86_64.exe)
+[![FreeBSD](https://img.shields.io/badge/FreeBSD-x86__64-AB2B28?logo=freebsd&logoColor=white)](https://msga.app/download/msga-freebsd-x86_64.tar.gz)
+[![OpenBSD](https://img.shields.io/badge/OpenBSD-x86__64-F2CA30?logo=openbsd&logoColor=black)](https://msga.app/download/msga-openbsd-x86_64.tar.gz)
+
+The Linux, macOS and Windows downloads are each a single self-contained file. The Linux binary is fully static and runs on any x86_64 distribution, on Wayland or X11. The macOS app comes for Apple Silicon and for Intel Macs and needs macOS 14 or later. msga checks for updates itself. On Linux and Windows it swaps in the new version for the next start; on macOS it downloads the new DMG for you to open.
+
+The FreeBSD and OpenBSD downloads are a `.tar.gz` with the binary, its icon, a `.desktop` file and a `README.txt` naming the few packages to install first (`pkg install` / `pkg_add`). The FreeBSD build runs on FreeBSD 14; the OpenBSD build is for OpenBSD 7.9, as each OpenBSD release renumbers its libraries. On the BSDs msga doesn't update itself: download the new archive.
+
+On macOS you can also install with Homebrew: `brew install --cask punarinta/msga/msga`. msga isn't notarized by Apple, so on first launch open System Settings → Privacy & Security and click "Open Anyway".
 
 ## Connecting to Slack
 
-Grab a [prebuilt build](#download) and you can connect Slack straight away — there are two ways to sign in:
+Grab a [prebuilt build](https://msga.app/#download) and you can connect Slack straight away. Click **+** (Add workspace) in the rail and choose **Slack**. There are two ways to sign in:
 
-- **Session sign-in (recommended)** — click *Sign in with your browser* and log in to Slack the normal way; msga picks the session up from a private, throwaway browser profile and closes the window. Nothing to register, nothing to build, no tokens to copy, and everything runs on your own personal quota. New messages arrive within a few seconds. (Already have the Slack desktop app on Linux? One click imports its session instead.)
-- **Your own Slack app** — register a free Slack app for instant real-time push (Socket Mode), then paste its keys into **Settings → System**.
+- **Slack session (recommended).** Click *Sign in with Chrome* (or Chromium, Brave, Edge or Vivaldi, whichever you have) and log in to Slack the normal way. msga picks the session up from a private, throwaway browser profile and closes the window. There is nothing to register, nothing to build and no tokens to copy, and everything runs on your own account's limits. New messages arrive by polling, as there is no live push in this mode. (Already have the Slack desktop app on Linux? *Import from local Slack* takes its session in one click. You can also paste the session cookie by hand.)
+- **Your own Slack app.** Register a free Slack app for live message push (Socket Mode), then paste its client ID, client secret and app-level token into **Settings → System → Slack connection**.
 
-Both are covered step by step in the **[Slack setup guide](docs/SETUP_SLACK.md)**. Most people want session sign-in — it needs no setup at all.
+Both are covered step by step in the **[Slack setup guide](https://github.com/punarinta/make-slack-great-again/blob/master/docs/SETUP_SLACK.md)**. Most people want session sign-in, because it needs no setup at all.
+
+## Coming from slk?
+
+[slk](https://github.com/gammons/slk) is a great Slack client if you live in a terminal. If you want the same speed in a desktop window, msga is the closest thing:
+
+- **No Slack desktop app needed.** msga signs in through your browser, so the Electron app doesn't have to be installed to hold a session.
+- **Images where you expect them.** Images, animated GIFs and custom emoji are drawn in the window on every platform, whatever your terminal supports.
+- **Even smaller.** 4.3 MB on Linux, 3.8 MB on Windows, a 2.2 MB DMG on macOS. One file each.
+
+The full side-by-side is at **[slk vs msga](https://msga.app/blog/slk-vs-msga/)**.
+
+## Connecting Claude Code
+
+Click **+** (Add workspace) in the rail and choose **Claude Code**. msga needs a working [Claude Code](https://claude.com/product/claude-code) install. If `claude` has never been run on this computer, run it once in a terminal first.
+
+msga reads the sessions from Claude Code's own state, so sessions you started in a terminal show up too (read-only while a terminal drives them). What you send from msga runs as a Claude Code background session, which keeps working if msga quits. Sessions can be started with a role from your team (the built-in specialists or teammates you add), and when you remove a session that msga started, msga cleans up its git worktrees as well.
+
+Mention a teammate (`@Engineer`, `@Designer`, …) in a session and it gets to work in a thread of its own, where you can reply to it directly. Slash commands, files Claude makes (shown as attachments) and new teammates with their own instructions all work from the same window:
+
+![Claude Code sessions in msga](gfx/screenshots/recording-claude.webp)
 
 ## Or build your own version
 
-If you'd rather build msga yourself (or you want to bake your own app keys into the binary), you register each service you want to connect and configure it before the client will connect. This is a one-time setup. Note that **Slack session sign-in needs none of this** — it works with a plain prebuilt binary.
+You can build msga yourself, for example to bake your own Slack app keys into the binary. Note that **Slack session sign-in and Claude Code need no keys at all**: they work with a plain build.
 
-### Step 1. Set up a messaging backend
+### Step 1. Add Slack app keys (optional)
 
-Pick the service(s) you want and follow the matching guide. Each ends by writing the credentials into `credentials.cmake`:
-
-- **[Slack setup](docs/SETUP_SLACK.md)** — create a Slack app, scopes, socket mode, events.
-- **[Microsoft Teams setup](docs/SETUP_TEAMS.md)** — register an Entra app, Graph permissions, admin consent.
-
-You can configure more than one — each fills in its own values in the same `credentials.cmake`, and the workspaces stack in the same rail.
+To build in your own Slack app's keys, follow the **[Slack setup guide](https://github.com/punarinta/make-slack-great-again/blob/master/docs/SETUP_SLACK.md)**: create a Slack app with its scopes, Socket Mode and events. The guide ends by writing the keys into `credentials.cmake` (copy `credentials.cmake.example`; the file is gitignored). The same file takes an optional GIPHY key for the GIF picker. Keys pasted in **Settings → System** take precedence over the built-in ones.
 
 The app version lives in `version.cmake` (tracked in git). Increment `MSGA_VERSION` there before each public release.
 
 ### Step 2. Configure build environment
 
-> **Prerequisites:** CMake ≥ 3.24, Qt 6.5+ dev packages (incl. the WebSockets module), a C++20 compiler (GCC 12+ / Clang 14+ / MSVC 2022+)
+> **Prerequisites:** CMake ≥ 3.21, Ninja, a C++20 compiler (Clang with lld preferred, GCC works too), pkg-config and Python 3. On Windows the compiler is MSYS2's mingw64 GCC; MSVC is not supported.
 
-> Distro Qt packages are often older than 6.5 (Ubuntu 24.04 ships 6.4). If yours is,
-> install Qt from the [online installer](https://www.qt.io/download-qt-installer) —
-> tick **Qt WebSockets**, it is not selected by default. A kit under `~/Qt` is picked
-> up automatically; anywhere else, name it with `QT_PREFIX`:
-> `QT_PREFIX=$HOME/Qt/6.9.0/gcc_64 ./scripts/build.sh`.
->
-> `QT_PREFIX` works the same way for every build script (`build.sh`, `release.sh`,
-> `run-tests.sh`, `coverage.sh`, `build.ps1`) and for a plain `cmake -B build -S .`.
-> Changing it reconfigures the build directory instead of silently reusing the old Qt.
+The configure scripts install and check everything a build needs:
 
 ```sh
-./scripts/configure-linux.sh    # for Linux
-./scripts/configure-mac.sh      # for macOS
-scripts/configure-windows.ps1   # for Windows
+./scripts/configure-linux.sh    # for Linux (Debian/Ubuntu, apt)
+./scripts/configure-mac.sh      # for macOS (Xcode command line tools + Homebrew)
+sh scripts/configure-bsd.sh     # for FreeBSD and OpenBSD (pkg / pkg_add)
 ```
 
-On Windows, run the PowerShell script from an **elevated** (Administrator) terminal:
+- **Linux:** installs the compiler and build tools plus the development packages of FreeType, HarfBuzz, xkbcommon, Wayland, XCB and D-Bus. On other distributions, install the equivalents (the script lists them when apt isn't there). Add `--release` to also install what the release scripts use: Docker (checked, not installed), Xvfb and Wine.
+- **macOS:** only cmake, ninja and clang-format come from Homebrew. The app links nothing but the system frameworks, and msga's CMake builds FreeType and HarfBuzz itself.
+- **FreeBSD and OpenBSD:** a plain `sh` script, so it runs before bash is installed. It uses the base system's clang and lld, and installs cmake, ninja, git, Python 3, bash and the development packages of xkbcommon, Wayland, XCB and D-Bus (on OpenBSD, XCB comes from the X11 sets, which must be installed), plus the Noto Sans font. On FreeBSD it also adds DejaVu fonts, the en_US Hunspell dictionary, sndio for the notification sound and an LLVM package for clang-format. msga's CMake builds FreeType and HarfBuzz itself. Run it as root, or as a user with doas or sudo. FreeBSD 14 and OpenBSD 7.9 are built and tested natively.
+
+On Windows, run the PowerShell script from an **elevated** (Administrator) terminal. It uses winget to install Git and LLVM (for clang-format), and installs MSYS2 to `C:\msys64` (or `$env:MSYS2_ROOT`) with its mingw64 GCC, CMake, Ninja and Python:
 
 ```powershell
 scripts\configure-windows.ps1
@@ -87,19 +108,45 @@ powershell -ExecutionPolicy Bypass -File scripts\configure-windows.ps1
 
 ```sh
 ./scripts/build.sh
-./build/msga                            # for Linux
+./build/msga                            # for Linux, FreeBSD and OpenBSD
 ./build/msga.app/Contents/MacOS/msga    # for macOS
 ```
 
-On Windows:
+On Windows (needs MSYS2 at `C:\msys64`, or set `MSYS2_ROOT`):
 
 ```powershell
 scripts\build.ps1
-build\Debug\msga.exe
+build\msga.exe
 ```
 
-If you see _"running scripts is disabled"_, see the execution policy note in Step 2, or run directly:
+`build.ps1` copies the GCC runtime DLLs next to `msga.exe`, so it also starts from Explorer. If you see _"running scripts is disabled"_, see the execution policy note in Step 2, or run directly:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File scripts\build.ps1
 ```
+
+Both build scripts take the same options:
+
+| Option    | What it does                                                                 |
+|-----------|------------------------------------------------------------------------------|
+| (none)    | Size-optimised (MinSizeRel) build into `build/`                              |
+| `--debug` | Debug build into `build-debug/`                                              |
+| `--test`  | Also builds and runs the test suites (combines with `--debug`)               |
+
+`--test` stays on in that build directory once you've used it.
+
+On Linux you can also cross-build for FreeBSD and OpenBSD (amd64), for example to check that a change still compiles there: `scripts/build-bsd-cross.sh freebsd` (or `openbsd`) fetches a sysroot once and builds into `build-freebsd/`. See [src/README.md](https://github.com/punarinta/make-slack-great-again/blob/master/src/README.md) for the details.
+
+### Step 4. Release builds (optional)
+
+`scripts/release.sh` (Linux, macOS) and `scripts\release.ps1` (Windows) make a stripped release-flags build for the machine you're on, always from a clean configure with no tests. They write to `build-release/` and print the per-module size report. `release.ps1` links the exe fully static, like the shipped one.
+
+For the source layout and the size rules, see [src/README.md](https://github.com/punarinta/make-slack-great-again/blob/master/src/README.md).
+
+## Porting to another OS
+
+msga needs little from an operating system: a surface to draw into, input events, TLS networking, threads, files and a clock. A new OS implements one small C interface for those and gets the rest of the app as it is. **[Porting msga anywhere](https://github.com/punarinta/make-slack-great-again/blob/master/docs/PORT_ANYWHERE.md)** lists what to provide and the steps.
+
+## License
+
+msga is free software under the [GNU General Public License v3.0 or later](https://github.com/punarinta/make-slack-great-again/blob/master/LICENSE). The third-party code it uses is listed in [THIRD_PARTY_LICENSES](https://github.com/punarinta/make-slack-great-again/blob/master/THIRD_PARTY_LICENSES).

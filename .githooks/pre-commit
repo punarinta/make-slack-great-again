@@ -4,22 +4,41 @@
 #   cmake -DMSGA_CLAZY=ON -B build -S . && cmake --build build --target clazy
 set -euo pipefail
 
-if ! command -v clang-format &>/dev/null; then
-    echo "pre-commit: clang-format not found — skipping format check"
-    echo "  Install via: sudo apt install clang-format  (or brew install clang-format)"
+# The tree is formatted with clang-format >= 22 and older releases emit
+# different output from the same config, so an old binary would reject every
+# correctly formatted file: skip the check instead (see scripts/clang-format-env.sh).
+env_sh="$(git rev-parse --show-toplevel)/scripts/clang-format-env.sh"
+if [[ ! -f "$env_sh" ]]; then
+    echo "pre-commit: $env_sh missing — skipping format check"
+    exit 0
+fi
+source "$env_sh"
+if ! msga_resolve_clang_format; then
+    if [[ -n "$CLANG_FORMAT" ]]; then
+        echo "pre-commit: $CLANG_FORMAT is too old (${MSGA_CLANG_FORMAT_VERSION}) — skipping format check"
+    else
+        echo "pre-commit: clang-format not found — skipping format check"
+    fi
+    msga_clang_format_hint | sed 's/^/  /'
     exit 0
 fi
 
-mapfile -t files < <(git diff --cached --name-only --diff-filter=ACMR \
+# macOS ships Bash 3.2, which does not provide mapfile.
+files=()
+while IFS= read -r file; do
+    files+=("$file")
+done < <(git diff --cached --name-only --diff-filter=ACMR \
     | grep -E '\.(cpp|h)$' \
     | grep -v '^make-slack-great-again/' \
+    | grep -v '^old-msga/third_party/' \
+    | grep -v '^src/third_party/' \
     || true)
 
 [[ ${#files[@]} -eq 0 ]] && exit 0
 
 bad=()
 for f in "${files[@]}"; do
-    if ! clang-format --dry-run --Werror "$f" 2>/dev/null; then
+    if ! "$CLANG_FORMAT" --dry-run --Werror "$f" 2>/dev/null; then
         bad+=("$f")
     fi
 done
@@ -28,6 +47,6 @@ if [[ ${#bad[@]} -gt 0 ]]; then
     echo "pre-commit: clang-format violations in:"
     printf "  %s\n" "${bad[@]}"
     echo ""
-    echo "Run:  clang-format -i ${bad[*]}"
+    echo "Run:  $CLANG_FORMAT -i ${bad[*]}"
     exit 1
 fi

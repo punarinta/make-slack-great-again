@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+  <style>rect { fill: black }</style>
+  <defs><filter id="f"><feGaussianBlur stdDeviation="3"/></filter>
+    <pattern id="p" width="4" height="4"><rect width="2" height="2"/></pattern>
+    <mask id="m"><rect width="50" height="50" fill="white"/></mask></defs>
+  <text x="10" y="50" font-size="20">Hello</text>
+  <rect x="0" y="0" width="40" height="40" fill="url(#p) #00ff00"/>
+  <rect x="50" y="0" width="40" height="40" fill="#ff0000" filter="url(#f)"/>
+  <rect x="0" y="50" width="40" height="40" fill="#0000ff" mask="url(#m)"/>
+  <image href="data:image/png;base64,AAAA" x="50" y="50" width="40" height="40"/>
+  <foreignObject x="50" y="50" width="40" height="40"><div xmlns="http://www.w3.org/1999/xhtml">x</div></foreignObject>
+</svg>

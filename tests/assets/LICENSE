@@ -1,0 +1,13 @@
+Test assets
+
+- avatars/*.png except deploybot.png: generated with DiceBear (https://www.dicebear.com)
+  from the "Lorelei" style by Lisa Wischofsky — CC0 1.0 Universal.
+- avatars/deploybot.png: DiceBear "Bottts Neutral" by Pablo Stanley — free for
+  personal and commercial use (https://bottts.com).
+- Everything else (workspace.png, images/, icons/, files/, canvases/, gifs/,
+  webp/, audio/, fixture.json), the SVG renderer's fixtures in svg/ and the COLRv1
+  test font in fonts/ (built by fonts/make_colrv1_test.py): drawn from
+  primitives, synthesised or written by hand for msga — same license as the
+  msga repository.
+
+The people, company and services depicted are fictional.

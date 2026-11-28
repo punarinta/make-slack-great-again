@@ -1,70 +1,70 @@
 #!/usr/bin/env bash
+# Build msga (the root CMake project: src/ on src/plat) on Linux, macOS,
+# FreeBSD or OpenBSD (after scripts/configure-bsd.sh).
+# Windows: scripts\build.ps1.
+# Usage:
+#   scripts/build.sh           # MinSizeRel → build/msga
+#   scripts/build.sh --debug   # Debug      → build-debug/msga
+#   scripts/build.sh --test    # also build and run the test suite (combines with --debug)
+#   scripts/build.sh --demo    # also compile the demo workspace (msga --demo demo)
+#   scripts/build.sh --asan    # AddressSanitizer + LeakSanitizer → build-asan/msga
+#                              #   (run it with scripts/run-asan.sh)
+# --test and --demo switch the option on in that build dir; it stays on there.
 set -euo pipefail
+
+case "$(uname -s)" in
+    MINGW* | MSYS* | CYGWIN*)
+        echo "on Windows use scripts\\build.ps1 (PowerShell)" >&2
+        exit 2
+        ;;
+esac
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 NPROC="$(nproc 2>/dev/null || sysctl -n hw.ncpu)"
 
-# --asan: build with AddressSanitizer + LeakSanitizer into a separate dir so the
-# instrumented objects never mix with a normal build.
+DEBUG=0
 ASAN=0
+TEST=0
+OPTIONS=()
 for arg in "$@"; do
     case "$arg" in
+        --debug) DEBUG=1 ;;
         --asan) ASAN=1 ;;
+        --test) TEST=1; OPTIONS+=(-DMSGA_BUILD_TESTS=ON) ;;
+        --demo) OPTIONS+=(-DMSGA_DEMO=ON) ;;
         *) echo "unknown argument: $arg" >&2; exit 2 ;;
     esac
 done
 
+# Size is the default build: the release flags are what the size budgets
+# measure. Debug and ASan get their own dirs so none share objects.
 if [[ "$ASAN" == "1" ]]; then
     BUILD_DIR="${PROJECT_ROOT}/build-asan"
-    CMAKE_EXTRA=(-DMSGA_ASAN=ON)
+    BUILD_TYPE=Debug
+elif [[ "$DEBUG" == "1" ]]; then
+    BUILD_DIR="${PROJECT_ROOT}/build-debug"
+    BUILD_TYPE=Debug
 else
     BUILD_DIR="${PROJECT_ROOT}/build"
-    CMAKE_EXTRA=()
+    BUILD_TYPE=MinSizeRel
 fi
 
-# Point find_package(Qt6) at a Qt that isn't on the default CMake search path
-# (explicit QT_PREFIX, Homebrew's keg-only Qt, an online-installer kit) — see
-# scripts/qt-prefix.sh. Same variable as release.sh/run-tests.sh/coverage.sh.
-source "${SCRIPT_DIR}/qt-prefix.sh"
-msga_resolve_qt_prefix
-msga_qt_cmake_args
-msga_qt_report
-CMAKE_EXTRA+=("${MSGA_QT_CMAKE_ARGS[@]+"${MSGA_QT_CMAKE_ARGS[@]}"}")
-
-# Only reconfigure when not already a Ninja build, or when the Qt it was
-# configured against changed (setting QT_PREFIX after a failed build must not
-# be silently ignored). Wipe the directory if it exists but has no build.ninja
-# (stale or wrong generator).
-if [[ ! -f "${BUILD_DIR}/build.ninja" ]] || msga_qt_prefix_changed "$BUILD_DIR"; then
+# Only configure when not already a Ninja build. Wipe a directory that exists
+# without build.ninja (stale or wrong generator).
+if [[ ! -f "${BUILD_DIR}/build.ninja" ]]; then
     rm -rf "${BUILD_DIR}"
-    # ${CMAKE_EXTRA[@]+…} guards the empty-array expansion so it doesn't trip
-    # `set -u` on bash 3.2 (the /bin/bash that ships with macOS).
-    cmake -S "$PROJECT_ROOT" -B "$BUILD_DIR" \
-        -G Ninja \
-        -DCMAKE_BUILD_TYPE=Debug \
-        "${CMAKE_EXTRA[@]+"${CMAKE_EXTRA[@]}"}"
+    cmake -S "$PROJECT_ROOT" -B "$BUILD_DIR" -G Ninja -DCMAKE_BUILD_TYPE="$BUILD_TYPE" \
+        -DMSGA_ASAN="$([[ "$ASAN" == "1" ]] && echo ON || echo OFF)" \
+        "${OPTIONS[@]+"${OPTIONS[@]}"}"
+elif [[ ${#OPTIONS[@]} -gt 0 ]]; then
+    cmake "$BUILD_DIR" "${OPTIONS[@]}"
 fi
 
-cmake --build "$BUILD_DIR" --target msga --parallel "$NPROC"
+cmake --build "$BUILD_DIR" --parallel "$NPROC"
 
-# macOS 26+ enforces code signing even for local ad-hoc builds. This is done in
-# a CMake POST_BUILD step (see the APPLE block in CMakeLists.txt) so it runs on
-# every build — including a bare `cmake --build` — right after the Info.plist is
-# installed, which is what gives the bundle a stable com.nisdos.msga identity.
-
-if [[ "$ASAN" == "1" ]]; then
-    cat <<EOF
-
-ASan build ready: ${BUILD_DIR}/msga
-Run with leak detection (logs to /tmp/msga-asan/asan.log.<pid>):
-
-  mkdir -p /tmp/msga-asan
-  ASAN_OPTIONS=detect_leaks=1:fast_unwind_on_malloc=0:log_path=/tmp/msga-asan/asan.log \\
-  LSAN_OPTIONS=report_objects=1:suppressions=${SCRIPT_DIR}/lsan-suppressions.txt:print_suppressions=0 \\
-    ${BUILD_DIR}/msga
-
-(scripts/lsan-suppressions.txt hides known third-party startup leaks so the
-report only flags leaks in our own code; or just use scripts/run-asan.sh.)
-EOF
+if [[ "$TEST" == "1" ]]; then
+    ctest --test-dir "$BUILD_DIR" --output-on-failure -j "$NPROC"
 fi
+
+echo "Built: ${BUILD_DIR}/msga"

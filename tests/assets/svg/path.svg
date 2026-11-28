@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+  <path d="M5 5 L25 5 L25 25 L5 25 Z" fill="#ff0000"/>
+  <path d="m35 5 h20 v20 h-20 z" fill="#00ff00"/>
+  <path d="M65 5 H85 V25 H65 Z" fill="#0000ff"/>
+  <path d="M5 35 C5 30 25 30 25 35 S25 55 15 55 S5 40 5 35 Z" fill="#ffff00"/>
+  <path d="M35 35 Q45 25 55 35 T55 55 L35 55 z" fill="#ff00ff"/>
+  <path d="M75 45 m-10 0 a10 10 0 1 0 20 0 a10 10 0 1 0 -20 0" fill="#00ffff"/>
+  <path d="M5,65 l20,0 0,20 -20,0z M10 70 l0 10 10 0 0-10z" fill="#000000" fill-rule="evenodd"/>
+  <path d="M35 65h20v20h-20zM40 70v10h10v-10z" fill="#808080"/>
+  <path d="M65 65 A 15 15 0 0 1 95 65 L 95 85 L 65 85 Z" fill="#800000"/>
+  <path d="M1e1 9.5e1 l.5.5 1-1 .25-.25" stroke="none" fill="none"/>
+</svg>

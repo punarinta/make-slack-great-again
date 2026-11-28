@@ -1,0 +1,14 @@
+# Vendored third-party sources stay byte-identical to upstream.
+#
+# miniaudio.h must be ignored rather than merely left alone: clang-format's
+# preprocessor-branch exploration blows up combinatorially on it (nested
+# #if/#elif/#else inside function bodies and asm operand lists), reaching
+# ~49 GB RSS and getting OOM-killed -- which takes the whole machine down,
+# not just the format run.
+old-msga/third_party/**
+
+# Vendored (trimmed) stb and the tables src/tools/icons.py and src/tools/i18n.py
+# generate (ctest i18n_up_to_date compares the latter byte for byte).
+src/third_party/**
+src/gfx/icons_generated.*
+src/app/i18n/languages_generated.cpp

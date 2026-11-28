@@ -1,0 +1,4948 @@
+msgid ""
+msgstr ""
+"Project-Id-Version: msga\n"
+"Language: ja\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+
+#: src/base/time.cpp src/app/mrkdwn/mrkdwn.cpp src/app/screens/shell/status_dialog.cpp
+msgid "Today"
+msgstr "今日"
+
+#: src/base/time.cpp src/app/mrkdwn/mrkdwn.cpp
+msgid "Yesterday"
+msgstr "昨日"
+
+#: src/base/time.cpp
+msgid "today at %1"
+msgstr "今日 %1"
+
+#: src/base/time.cpp
+msgid "yesterday at %1"
+msgstr "昨日 %1"
+
+#: src/base/time.cpp src/app/screens/messages/audio_card.cpp
+msgid "%1 at %2"
+msgstr "%1 %2"
+
+#: src/base/time.cpp
+msgid "just now"
+msgstr "たった今"
+
+#: src/base/time.cpp
+msgid "%n minute ago"
+msgid_plural "%n minutes ago"
+msgstr[0] "%n 分前"
+
+#: src/base/time.cpp
+msgid "%n hour ago"
+msgid_plural "%n hours ago"
+msgstr[0] "%n 時間前"
+
+#: src/base/time.cpp
+msgid "%n day ago"
+msgid_plural "%n days ago"
+msgstr[0] "%n 日前"
+
+#: src/base/time.cpp
+msgid "%n month ago"
+msgid_plural "%n months ago"
+msgstr[0] "%n か月前"
+
+#: src/base/time.cpp
+msgid "%n year ago"
+msgid_plural "%n years ago"
+msgstr[0] "%n 年前"
+
+#: src/ui/controls.cpp
+msgid "Show"
+msgstr "表示"
+
+#: src/ui/controls.cpp
+msgid "Hide"
+msgstr "非表示"
+
+#: src/ui/controls.cpp src/ui/filebrowser.cpp src/app/screens/messages/message_dialogs.cpp src/app/screens/settings/settings_pages.cpp src/app/screens/shell/channel_dialogs.cpp src/app/screens/shell/composer.cpp src/app/screens/shell/composer_popups.cpp src/app/screens/shell/scheduled_page.cpp src/app/screens/shell/session_dialogs.cpp src/app/screens/shell/shell_dialogs.cpp src/app/screens/shell/signin_dialogs.cpp src/app/screens/shell/status_dialog.cpp
+msgid "Cancel"
+msgstr "キャンセル"
+
+#: src/ui/filebrowser.cpp
+msgid "Open file"
+msgstr "ファイルを開く"
+
+#: src/ui/filebrowser.cpp
+msgid "Open"
+msgstr "開く"
+
+#: src/ui/filebrowser.cpp
+msgid "Open files"
+msgstr "ファイルを開く"
+
+#: src/ui/filebrowser.cpp src/app/screens/common/file_dialogs.cpp
+msgid "Save file"
+msgstr "ファイルを保存"
+
+#: src/ui/filebrowser.cpp src/app/screens/messages/message_dialogs.cpp src/app/screens/settings/settings_dialog.cpp src/app/screens/settings/settings_pages.cpp src/app/screens/shell/composer_popups.cpp src/app/screens/shell/session_dialogs.cpp src/app/screens/shell/shell_dialogs.cpp src/app/screens/shell/status_dialog.cpp
+msgid "Save"
+msgstr "保存"
+
+#: src/ui/filebrowser.cpp src/app/screens/common/file_dialogs.cpp
+msgid "Choose folder"
+msgstr "フォルダを選択"
+
+#: src/ui/filebrowser.cpp src/app/screens/shell/shell_dialogs.cpp
+msgid "Choose"
+msgstr "選択"
+
+#: src/ui/filebrowser.cpp
+msgid "No folders here"
+msgstr "フォルダがありません"
+
+#: src/ui/filebrowser.cpp
+msgid "This folder is empty"
+msgstr "このフォルダは空です"
+
+#: src/ui/filebrowser.cpp
+msgid "Show hidden files (Ctrl+H)"
+msgstr "隠しファイルを表示 (Ctrl+H)"
+
+#: src/ui/filebrowser.cpp src/app/screens/settings/settings_pages.cpp src/app/screens/shell/channel_dialogs.cpp src/app/screens/shell/session_dialogs.cpp src/app/screens/shell/shell_dialogs.cpp src/app/screens/shell/status_dialog.cpp
+msgid "Name"
+msgstr "名前"
+
+#: src/ui/filebrowser.cpp
+msgid "This folder can’t be opened."
+msgstr "このフォルダを開けません。"
+
+#: src/ui/filebrowser.cpp
+msgid "Replace"
+msgstr "置き換える"
+
+#: src/ui/filebrowser.cpp
+msgid "That folder doesn’t exist."
+msgstr "そのフォルダは存在しません。"
+
+#: src/ui/filebrowser.cpp
+msgid "“%1” already exists. Replace it?"
+msgstr "「%1」はすでに存在します。置き換えますか？"
+
+#: src/ui/textedit.cpp
+msgid "Cut"
+msgstr "切り取り"
+
+#: src/ui/textedit.cpp src/app/screens/messages/audio_card.cpp src/app/screens/messages/rich.cpp src/app/screens/messages/summary.cpp
+msgid "Copy"
+msgstr "コピー"
+
+#: src/ui/textedit.cpp
+msgid "Paste"
+msgstr "貼り付け"
+
+#: src/ui/textedit.cpp
+msgid "Select all"
+msgstr "すべて選択"
+
+#: src/app/claude/approvals.cpp
+msgid "Yes, and don't ask again for %1 commands in %2"
+msgstr "はい、%2 での %1 コマンドは今後確認しない"
+
+#: src/app/claude/approvals.cpp
+msgid "Yes, and don't ask again for %1"
+msgstr "はい、%1 は今後確認しない"
+
+#: src/app/claude/approvals.cpp
+msgid "Yes, and always allow access to %1 from this project"
+msgstr "はい、このプロジェクトでは %1 へのアクセスを常に許可"
+
+#: src/app/claude/approvals.cpp
+msgid "Yes, allow all edits during this session"
+msgstr "はい、このセッション中のすべての編集を許可"
+
+#: src/app/claude/approvals.cpp src/app/claude/backend.cpp
+msgid "Yes"
+msgstr "はい"
+
+#: src/app/claude/approvals.cpp src/app/claude/backend.cpp
+msgid "No"
+msgstr "いいえ"
+
+#: src/app/claude/backend.cpp src/app/screens/messages/rows.cpp src/app/screens/shell/typing_indicator.cpp
+msgid "You"
+msgstr "あなた"
+
+#: src/app/claude/backend.cpp
+msgid "This session is running in a terminal — reply there. Once it ends, you can continue it here."
+msgstr "このセッションはターミナルで動いています。返信はそちらでどうぞ。終了すれば、ここから続けられます。"
+
+#: src/app/claude/backend.cpp
+msgid "Another program is driving this session. Once it ends, you can continue it here."
+msgstr "このセッションは別のプログラムが操作しています。終了すれば、ここから続けられます。"
+
+#: src/app/claude/backend.cpp
+msgid "Waiting for you"
+msgstr "あなたの対応待ち"
+
+#: src/app/claude/backend.cpp
+msgid "Not logged in"
+msgstr "未ログイン"
+
+#: src/app/claude/backend.cpp
+msgid "Working"
+msgstr "作業中"
+
+#: src/app/claude/backend.cpp
+msgid "Running a background command"
+msgstr "バックグラウンドでコマンドを実行中"
+
+#: src/app/claude/backend.cpp
+msgid "its thread"
+msgstr "そのスレッド"
+
+#: src/app/claude/backend.cpp
+msgid "Subagent “%1” reported back in %2."
+msgstr "サブエージェント「%1」が%2で報告しました。"
+
+#: src/app/claude/backend.cpp
+msgid "Waiting for you in the terminal."
+msgstr "ターミナルであなたの対応を待っています。"
+
+#: src/app/claude/backend.cpp
+msgid "Waiting for your approval: %1"
+msgstr "あなたの承認待ち: %1"
+
+#: src/app/claude/backend.cpp
+msgid "Its options couldn't be read yet; trying again."
+msgstr "選択肢をまだ読み取れません。再試行しています。"
+
+#: src/app/claude/backend.cpp
+msgid " · no permission checks"
+msgstr " · 権限の確認なし"
+
+#: src/app/claude/backend.cpp src/app/claude/backend_branch.cpp src/app/claude/backend_manage.cpp src/app/claude/backend_send.cpp
+msgid "The session was removed from msga."
+msgstr "セッションはmsgaから削除されました。"
+
+#: src/app/claude/backend.cpp
+msgid "status"
+msgstr "状況"
+
+#: src/app/claude/backend_branch.cpp
+msgid "Thinking…"
+msgstr "考え中…"
+
+#: src/app/claude/backend_branch.cpp
+msgid "Reading files…"
+msgstr "ファイルを読んでいます…"
+
+#: src/app/claude/backend_branch.cpp src/app/screens/shell/composer_popups.cpp src/app/screens/shell/message_search.cpp
+msgid "Searching…"
+msgstr "検索中…"
+
+#: src/app/claude/backend_branch.cpp
+msgid "Looking things up online…"
+msgstr "オンラインで調べています…"
+
+#: src/app/claude/backend_branch.cpp
+msgid "Running a command…"
+msgstr "コマンドを実行しています…"
+
+#: src/app/claude/backend_branch.cpp
+msgid "Asking a subagent…"
+msgstr "サブエージェントに依頼しています…"
+
+#: src/app/claude/backend_branch.cpp
+msgid "Working…"
+msgstr "作業中…"
+
+#: src/app/claude/backend_branch.cpp
+msgid "Waiting for approval…"
+msgstr "承認待ち…"
+
+#: src/app/claude/backend_branch.cpp src/app/claude/backend_send.cpp
+msgid "Send the session its first message before asking on the side."
+msgstr "横道の質問をする前に、まずセッションに最初のメッセージを送ってください。"
+
+#: src/app/claude/backend_branch.cpp src/app/claude/backend_send.cpp
+msgid "Couldn't read %1."
+msgstr "%1 を読み込めませんでした。"
+
+#: src/app/claude/backend_branch.cpp src/app/claude/backend_send.cpp
+msgid "Claude Code didn't pick up the message."
+msgstr "Claude Code がメッセージを受け取りませんでした。"
+
+#: src/app/claude/backend_branch.cpp
+msgid "Claude Code stopped before it answered."
+msgstr "Claude Codeは回答する前に停止しました。"
+
+#: src/app/claude/backend_manage.cpp src/app/claude/backend_send.cpp src/app/slack/slack_actions.cpp
+msgid "Couldn't send message: %1"
+msgstr "メッセージを送信できませんでした: %1"
+
+#: src/app/claude/backend_manage.cpp
+msgid "Couldn't delete the session's worktree: %1"
+msgstr "セッションのワークツリーを削除できませんでした: %1"
+
+#: src/app/claude/backend_manage.cpp
+msgid "Couldn't copy the picture."
+msgstr "画像をコピーできませんでした。"
+
+#: src/app/claude/backend_manage.cpp
+msgid "Ask a side question in a thread; the session itself isn't touched"
+msgstr "スレッドで横道の質問をします。セッション自体には影響しません"
+
+#: src/app/claude/backend_manage.cpp
+msgid "<question>"
+msgstr "<質問>"
+
+#: src/app/claude/backend_manage.cpp
+msgid "Show the session's Claude Code version, model, account and folder"
+msgstr "セッションの Claude Code のバージョン、モデル、アカウント、フォルダーを表示"
+
+#: src/app/claude/backend_manage.cpp
+msgid "Start a new session in the same folder; this one stays as it is"
+msgstr "同じフォルダーで新しいセッションを開始します。このセッションはそのまま残ります"
+
+#: src/app/claude/backend_manage.cpp src/app/screens/settings/settings_pages.cpp
+msgid "Version"
+msgstr "バージョン"
+
+#: src/app/claude/backend_manage.cpp
+msgid "Session name"
+msgstr "セッション名"
+
+#: src/app/claude/backend_manage.cpp
+msgid "Teammate"
+msgstr "チームメイト"
+
+#: src/app/claude/backend_manage.cpp
+msgid "%1 (no longer on the team)"
+msgstr "%1（チームから外れています）"
+
+#: src/app/claude/backend_manage.cpp
+msgid "Session ID"
+msgstr "セッション ID"
+
+#: src/app/claude/backend_manage.cpp
+msgid "Background"
+msgstr "バックグラウンド"
+
+#: src/app/claude/backend_manage.cpp src/app/screens/messages/rows.cpp
+msgid "Ended"
+msgstr "終了済み"
+
+#: src/app/claude/backend_manage.cpp
+msgid "Interactive, in a terminal"
+msgstr "対話型（ターミナル）"
+
+#: src/app/claude/backend_manage.cpp
+msgid "Driven by another program"
+msgstr "別のプログラムが操作中"
+
+#: src/app/claude/backend_manage.cpp
+msgid "Session kind"
+msgstr "セッションの種類"
+
+#: src/app/claude/backend_manage.cpp
+msgid "Peer address"
+msgstr "ピアアドレス"
+
+#: src/app/claude/backend_manage.cpp
+msgid "Folder"
+msgstr "フォルダー"
+
+#: src/app/claude/backend_manage.cpp
+msgid "Login method"
+msgstr "ログイン方法"
+
+#: src/app/claude/backend_manage.cpp
+msgid "%1 account"
+msgstr "%1 アカウント"
+
+#: src/app/claude/backend_manage.cpp
+msgid "Organization"
+msgstr "組織"
+
+#: src/app/claude/backend_manage.cpp src/app/screens/shell/status_dialog.cpp
+msgid "Email"
+msgstr "メールアドレス"
+
+#: src/app/claude/backend_manage.cpp src/app/screens/settings/settings_pages.cpp
+msgid "Model"
+msgstr "モデル"
+
+#: src/app/claude/backend_manage.cpp
+msgid "Permission mode"
+msgstr "権限モード"
+
+#: src/app/claude/backend_send.cpp
+msgid "This session no longer exists."
+msgstr "このセッションはもう存在しません。"
+
+#: src/app/claude/backend_send.cpp
+msgid "This subagent can't be written to until it has started."
+msgstr "このサブエージェントには、開始するまで書き込めません。"
+
+#: src/app/claude/backend_send.cpp
+msgid "Type your question after /btw."
+msgstr "/btw の後に質問を入力してください。"
+
+#: src/app/claude/backend_send.cpp
+msgid "Claude Code's session didn't take the message: %1"
+msgstr "Claude Codeのセッションがメッセージを受け取りませんでした: %1"
+
+#: src/app/claude/backend_send.cpp
+msgid "Claude isn't waiting for that approval any more."
+msgstr "Claude はもうこの承認を待っていません。"
+
+#: src/app/claude/backend_send.cpp
+msgid "The answer is on its way."
+msgstr "回答を送信中です。"
+
+#: src/app/claude/backend_send.cpp
+msgid "Couldn't stop “%1”: its process wasn't found."
+msgstr "「%1」を停止できませんでした：プロセスが見つかりません。"
+
+#: src/app/claude/cli.cpp
+msgid "Claude Code runs on your computer, outside msga's sandbox, and this Flatpak's access to it is turned off. Allow \"org.freedesktop.Flatpak\" and \"All system files\" for msga in Flatseal (or run `flatpak override --user --talk-name=org.freedesktop.Flatpak --filesystem=host com.nisdos.msga`), then restart msga."
+msgstr "Claude Code は msga のサンドボックスの外、このコンピューター上で動作しますが、この Flatpak からのアクセスはオフになっています。Flatseal で msga に「org.freedesktop.Flatpak」と「All system files」を許可して（または `flatpak override --user --talk-name=org.freedesktop.Flatpak --filesystem=host com.nisdos.msga` を実行して）、msga を再起動してください。"
+
+#: src/app/claude/cli.cpp
+msgid "Claude Code isn't installed on this computer (msga can't find the claude command). Install it (https://code.claude.com/docs/en/setup), run `claude` once in a terminal to log in, then try again."
+msgstr "このコンピューターには Claude Code がインストールされていません（msga が claude コマンドを見つけられません）。インストール（https://code.claude.com/docs/en/setup）してからターミナルで一度 `claude` を実行してログインし、もう一度お試しください。"
+
+#: src/app/claude/cli.cpp
+msgid "Claude Code isn't logged in on this computer. Run `claude` in a terminal and log in with /login, then try again."
+msgstr "このコンピューターの Claude Code はログインしていません。ターミナルで `claude` を実行して /login でログインしてから、もう一度お試しください。"
+
+#: src/app/claude/cli.cpp
+msgid "Claude Code doesn't seem to be set up on this computer: %1 doesn't exist. Run `claude` once in a terminal, then add the workspace again."
+msgstr "このコンピューターでは Claude Code が設定されていないようです（%1 がありません）。ターミナルで一度 `claude` を実行してから、もう一度ワークスペースを追加してください。"
+
+#: src/app/claude/host_local.cpp src/app/claude/host_remote.cpp
+msgid "%1 isn't a folder."
+msgstr "%1 はフォルダーではありません。"
+
+#: src/app/claude/host_local.cpp
+msgid "Claude Code doesn't run background sessions in the home folder. Pick a project folder."
+msgstr "Claude Code はホームフォルダーではバックグラウンドセッションを実行しません。プロジェクトのフォルダーを選んでください。"
+
+#: src/app/claude/host_remote.cpp
+msgid "The connection was closed."
+msgstr "接続が閉じられました。"
+
+#: src/app/claude/host_remote.cpp
+msgid "ssh isn't installed on this computer."
+msgstr "このコンピューターには ssh がインストールされていません。"
+
+#: src/app/claude/host_remote.cpp
+msgid "msga on %1 is a version this one can't work with. Install the same msga version there."
+msgstr "%1 の msga はこの msga と組み合わせて使えないバージョンです。同じバージョンの msga をそちらにインストールしてください。"
+
+#: src/app/claude/host_remote.cpp
+msgid "Couldn't connect to %1: %2"
+msgstr "%1 に接続できませんでした: %2"
+
+#: src/app/claude/host_remote.cpp
+msgid "It stopped answering."
+msgstr "応答がなくなりました。"
+
+#: src/app/claude/host_remote.cpp
+msgid "Lost the connection to %1."
+msgstr "%1 との接続が切れました。"
+
+#: src/app/claude/launcher.cpp
+msgid "Claude Code exited (code %1)."
+msgstr "Claude Code が終了しました（コード %1）。"
+
+#: src/app/claude/launcher.cpp src/app/screens/settings/settings_pages.cpp
+msgid "Claude Code"
+msgstr "Claude Code"
+
+#: src/app/claude/launcher.cpp
+msgid "Project skill"
+msgstr "プロジェクトのスキル"
+
+#: src/app/claude/launcher.cpp
+msgid "Skill"
+msgstr "スキル"
+
+#: src/app/claude/launcher.cpp
+msgid "Couldn't start %1: %2"
+msgstr "%1 を起動できませんでした: %2"
+
+#: src/app/claude/launcher.cpp
+msgid "Claude Code started a copy of this session instead of continuing it."
+msgstr "Claude Code はこのセッションを続ける代わりにコピーを開始しました。"
+
+#: src/app/claude/links.cpp
+msgid "Couldn't find the message's thread."
+msgstr "メッセージのスレッドが見つかりませんでした。"
+
+#: src/app/claude/links.cpp
+msgid "Can't read the linked thread in %1: %2"
+msgstr "%1 のリンクされたスレッドを読み込めません: %2"
+
+#: src/app/claude/links.cpp
+msgid "Picked up late — looking into it now…"
+msgstr "遅れて受け取りました — 今から調べます…"
+
+#: src/app/claude/links.cpp
+msgid "Looking into it…"
+msgstr "調べています…"
+
+#: src/app/claude/links.cpp
+msgid "%1 in %2: %3"
+msgstr "%2 の %1: %3"
+
+#: src/app/claude/links.cpp
+msgid "There is no Claude Code workspace to ask."
+msgstr "質問できる Claude Code ワークスペースがありません。"
+
+#: src/app/claude/links.cpp
+msgid "%1-marked replies are generated by AI."
+msgstr "%1 の付いた返信は AI が生成したものです。"
+
+#: src/app/claude/links.cpp
+msgid "The agent couldn't answer in %1: %2"
+msgstr "エージェントは %1 で回答できませんでした: %2"
+
+#: src/app/claude/links.cpp
+msgid "Couldn't answer: %1"
+msgstr "回答できませんでした: %1"
+
+#: src/app/claude/links.cpp
+msgid "Answered below"
+msgstr "下に回答しました"
+
+#: src/app/claude/links.cpp src/app/screens/messages/rich.cpp src/app/screens/shell/shell_links.cpp
+msgid "%1 in %2"
+msgstr "%2 の %1"
+
+#: src/app/claude/render.cpp
+msgid "%n tool call"
+msgid_plural "%n tool calls"
+msgstr[0] "ツール呼び出し %n 件"
+
+#: src/app/claude/render.cpp
+msgid "… %n earlier"
+msgid_plural "… %n earlier"
+msgstr[0] "… それ以前に %n 件"
+
+#: src/app/claude/render.cpp
+msgid "Subagent: %1"
+msgstr "サブエージェント: %1"
+
+#: src/app/claude/render.cpp
+msgid "Subagent report"
+msgstr "サブエージェントの報告"
+
+#: src/app/claude/render.cpp
+msgid "Message from session “%1”"
+msgstr "セッション「%1」からのメッセージ"
+
+#: src/app/claude/render.cpp
+msgid "Message from another session"
+msgstr "別のセッションからのメッセージ"
+
+#: src/app/claude/roles.cpp
+msgid "Generalist"
+msgstr "ジェネラリスト"
+
+#: src/app/claude/roles.cpp
+msgid "Claude Code as it comes: any task."
+msgstr "素の Claude Code：どんな作業でも。"
+
+#: src/app/claude/roles.cpp
+msgid "Engineer"
+msgstr "エンジニア"
+
+#: src/app/claude/roles.cpp
+msgid "Writes, debugs and reviews code, and proves it works."
+msgstr "コードを書き、デバッグし、レビューして、動くことを確かめます。"
+
+#: src/app/claude/roles.cpp
+msgid "Designer"
+msgstr "デザイナー"
+
+#: src/app/claude/roles.cpp
+msgid "Shapes flows, screens and interface copy; builds mockups."
+msgstr "フロー、画面、UI の文言を形にし、モックアップを作ります。"
+
+#: src/app/claude/roles.cpp
+msgid "Marketer"
+msgstr "マーケター"
+
+#: src/app/claude/roles.cpp
+msgid "Positioning, messaging, launch plans and copy."
+msgstr "ポジショニング、メッセージ、ローンチ計画、コピー。"
+
+#: src/app/claude/roles.cpp
+msgid "Researcher"
+msgstr "リサーチャー"
+
+#: src/app/claude/roles.cpp
+msgid "Digs into questions and reports findings with sources."
+msgstr "疑問を掘り下げ、出典つきで結果を報告します。"
+
+#: src/app/claude/roles.cpp
+msgid "A teammate needs a name."
+msgstr "チームメイトには名前が必要です。"
+
+#: src/app/claude/roles.cpp
+msgid "That teammate is gone."
+msgstr "そのチームメイトはもういません。"
+
+#: src/app/llm/service.cpp
+msgid "No AI provider connected — connect one in Settings → AI assistance"
+msgstr "AIプロバイダーが接続されていません — 設定→「AIアシスタンス」で接続してください"
+
+#: src/app/llm/service.cpp
+msgid "%1 is not connected"
+msgstr "%1は接続されていません"
+
+#: src/app/llm/service.cpp
+msgid "%1 does not support speech-to-text — connect an OpenAI-compatible provider in Settings → AI assistance"
+msgstr "%1は音声の文字起こしに対応していません — 設定→「AIアシスタンス」でOpenAI互換のプロバイダーを接続してください"
+
+#: src/app/llm/service.cpp
+msgid "%1 does not support speech-to-text"
+msgstr "%1は音声の文字起こしに対応していません"
+
+#: src/app/llm/voice_input.cpp
+msgid "Voice input needs a speech-to-text provider. Connect OpenAI or an OpenAI-compatible server in Settings → AI assistance."
+msgstr "音声入力には文字起こしに対応したプロバイダーが必要です。設定 → AIアシスタンスでOpenAIまたはOpenAI互換のサーバーを接続してください。"
+
+#: src/app/llm/voice_input.cpp
+msgid "No microphone recording is available on this system"
+msgstr "このシステムではマイクで録音できません"
+
+#: src/app/llm/voice_input.cpp
+msgid "Couldn't record: %1"
+msgstr "録音できませんでした: %1"
+
+#: src/app/llm/voice_input.cpp
+msgid "No speech was recorded"
+msgstr "音声が録音されませんでした"
+
+#: src/app/llm/voice_input.cpp
+msgid "Voice input needs a speech-to-text provider"
+msgstr "音声入力には文字起こしに対応したプロバイダーが必要です"
+
+#: src/app/llm/voice_input.cpp src/app/screens/messages/audio_card.cpp
+msgid "Couldn't transcribe: %1"
+msgstr "文字起こしできませんでした: %1"
+
+#: src/app/llm/voice_input.cpp src/app/screens/messages/audio_card.cpp
+msgid "No speech was recognised"
+msgstr "音声を認識できませんでした"
+
+#: src/app/llm/wire.cpp
+msgid "unknown error"
+msgstr "不明なエラー"
+
+#: src/app/llm/wire.cpp
+msgid "This server has no speech-to-text endpoint (HTTP 404)"
+msgstr "このサーバーには音声文字起こしのエンドポイントがありません（HTTP 404）"
+
+#: src/app/llm/wire.cpp
+msgid "No chat endpoint at this URL (HTTP 404) — most servers expect it to end in /v1"
+msgstr "このURLにチャットエンドポイントがありません（HTTP 404）— 多くのサーバーでは末尾が /v1 である必要があります"
+
+#: src/app/llm/wire.cpp
+msgid "HTTP %1"
+msgstr "HTTP %1"
+
+#: src/app/llm/wire.cpp
+msgid "HTTP %1: %2"
+msgstr "HTTP %1: %2"
+
+#: src/app/llm/wire.cpp
+msgid "Unexpected response from server (not JSON)"
+msgstr "サーバーから予期しない応答が返されました（JSONではありません）"
+
+#: src/app/llm/wire.cpp
+msgid "Unexpected response from server (no choices)"
+msgstr "サーバーから予期しない応答が返されました（choicesがありません）"
+
+#: src/app/llm/wire.cpp
+msgid "Unexpected response from server (no text)"
+msgstr "サーバーから予期しない応答が返されました（textがありません）"
+
+#: src/app/llm/wire.cpp
+msgid "Server not found"
+msgstr "サーバーが見つかりません"
+
+#: src/app/llm/wire.cpp
+msgid "Couldn't connect to the server"
+msgstr "サーバーに接続できませんでした"
+
+#: src/app/llm/wire.cpp
+msgid "The secure connection to the server failed"
+msgstr "サーバーとの安全な接続に失敗しました"
+
+#: src/app/llm/wire.cpp
+msgid "The server didn't answer in time"
+msgstr "サーバーが時間内に応答しませんでした"
+
+#: src/app/llm/wire.cpp
+msgid "The server's answer couldn't be read"
+msgstr "サーバーの応答を読み取れませんでした"
+
+#: src/app/llm/wire.cpp
+msgid "Too many redirects"
+msgstr "リダイレクトが多すぎます"
+
+#: src/app/llm/wire.cpp
+msgid "Invalid server URL"
+msgstr "サーバーのURLが無効です"
+
+#: src/app/llm/wire.cpp
+msgid "network error"
+msgstr "ネットワークエラー"
+
+#: src/app/media/audio_errors.cpp
+msgid "Audio playback failed"
+msgstr "音声の再生に失敗しました"
+
+#: src/app/media/audio_errors.cpp
+msgid "Audio playback is unavailable"
+msgstr "音声の再生は利用できません"
+
+#: src/app/media/audio_errors.cpp
+msgid "This audio format can't be played here"
+msgstr "この音声形式はここでは再生できません"
+
+#: src/app/media/audio_errors.cpp
+msgid "This audio format needs ffmpeg installed to play"
+msgstr "この音声形式の再生には ffmpeg のインストールが必要です"
+
+#: src/app/media/audio_errors.cpp
+msgid "No audio output found (needs pw-cat, paplay or aplay)"
+msgstr "音声出力が見つかりません（pw-cat、paplay または aplay が必要です）"
+
+#: src/app/media/audio_errors.cpp
+msgid "Audio output failed"
+msgstr "音声出力に失敗しました"
+
+#: src/app/media/audio_errors.cpp
+msgid "No audio capture tool found (install PipeWire, PulseAudio or ALSA utilities)"
+msgstr "録音ツールが見つかりません（PipeWire、PulseAudio、ALSAのユーティリティをインストールしてください）"
+
+#: src/app/media/audio_errors.cpp
+msgid "No microphone found"
+msgstr "マイクが見つかりません"
+
+#: src/app/media/audio_errors.cpp
+msgid "The microphone is in use by another app"
+msgstr "マイクは別のアプリで使用中です"
+
+#: src/app/media/audio_errors.cpp
+msgid "Microphone access is blocked. Allow msga in System Settings → Privacy & Security → Microphone."
+msgstr "マイクへのアクセスがブロックされています。システム設定 → プライバシーとセキュリティ → マイク で msga を許可してください。"
+
+#: src/app/media/audio_errors.cpp
+msgid "Couldn't open the microphone. Check that microphone access is allowed in Windows Settings → Privacy & security → Microphone."
+msgstr "マイクを開けませんでした。Windowsの設定 → プライバシーとセキュリティ → マイクで、マイクへのアクセスが許可されているか確認してください。"
+
+#: src/app/media/audio_errors.cpp
+msgid "Couldn't open the microphone"
+msgstr "マイクを開けませんでした"
+
+#: src/app/media/audio_errors.cpp
+msgid "Couldn't start recording from the microphone"
+msgstr "マイクから録音を開始できませんでした"
+
+#: src/app/media/audio_errors.cpp
+msgid "The microphone isn't delivering any audio"
+msgstr "マイクから音声が届いていません"
+
+#: src/app/media/audio_errors.cpp
+msgid "Recording stopped unexpectedly"
+msgstr "録音が予期せず停止しました"
+
+#: src/app/media/audio_errors.cpp
+msgid "Couldn't read the recording"
+msgstr "録音を読み込めませんでした"
+
+#: src/app/media/audio_errors.cpp
+msgid "Recording from the microphone failed"
+msgstr "マイクからの録音に失敗しました"
+
+#: src/app/media/sounds.cpp
+msgid "msga chime"
+msgstr "msga チャイム"
+
+#: src/app/mrkdwn/emoji_categories.inc
+msgid "Smileys & people"
+msgstr "スマイリーと人"
+
+#: src/app/mrkdwn/emoji_categories.inc
+msgid "Animals & nature"
+msgstr "動物と自然"
+
+#: src/app/mrkdwn/emoji_categories.inc
+msgid "Food & drink"
+msgstr "食べ物と飲み物"
+
+#: src/app/mrkdwn/emoji_categories.inc
+msgid "Travel & places"
+msgstr "旅行と場所"
+
+#: src/app/mrkdwn/emoji_categories.inc
+msgid "Activities"
+msgstr "アクティビティ"
+
+#: src/app/mrkdwn/emoji_categories.inc
+msgid "Objects"
+msgstr "もの"
+
+#: src/app/mrkdwn/emoji_categories.inc
+msgid "Symbols"
+msgstr "記号"
+
+#: src/app/mrkdwn/emoji_categories.inc
+msgid "Flags"
+msgstr "旗"
+
+#: src/app/mrkdwn/mrkdwn.cpp src/app/screens/messages/message_list.cpp
+msgid "Tomorrow"
+msgstr "明日"
+
+#: src/app/screens/common/file_dialogs.cpp
+msgid "Attach files"
+msgstr "ファイルを添付"
+
+#: src/app/screens/common/file_dialogs.cpp
+msgid "Attach a file"
+msgstr "ファイルを添付"
+
+#: src/app/screens/common/tag_badge.cpp src/app/screens/shell/composer_popups.cpp
+msgid "APP"
+msgstr "アプリ"
+
+#: src/app/screens/common/tag_badge.cpp
+msgid "EXT"
+msgstr "外部"
+
+#: src/app/screens/common/tag_badge.cpp
+msgid "VIP"
+msgstr "VIP"
+
+#: src/app/screens/messages/audio_card.cpp
+msgid "%1 · transcribed by %2"
+msgstr "%1 · %2による文字起こし"
+
+#: src/app/screens/messages/audio_card.cpp
+msgid "Transcript (auto-generated)"
+msgstr "文字起こし（自動生成）"
+
+#: src/app/screens/messages/audio_card.cpp src/app/screens/shell/files_page.cpp
+msgid "Loading…"
+msgstr "読み込み中…"
+
+#: src/app/screens/messages/audio_card.cpp
+msgid "Transcribe with AI"
+msgstr "AIで文字起こし"
+
+#: src/app/screens/messages/audio_card.cpp
+msgid "View transcript"
+msgstr "文字起こしを表示"
+
+#: src/app/screens/messages/audio_card.cpp
+msgid "Pause"
+msgstr "一時停止"
+
+#: src/app/screens/messages/audio_card.cpp
+msgid "Play"
+msgstr "再生"
+
+#: src/app/screens/messages/audio_card.cpp src/app/screens/messages/message_list.cpp src/app/update/updater.cpp
+msgid "Downloading %1"
+msgstr "%1をダウンロード中"
+
+#: src/app/screens/messages/audio_card.cpp
+msgid "Download failed"
+msgstr "ダウンロードに失敗しました"
+
+#: src/app/screens/messages/audio_card.cpp
+msgid "%1 does not support speech-to-text. Pick an OpenAI-compatible provider in Settings → AI assistance."
+msgstr "%1は音声の文字起こしに対応していません。設定 → AIアシスタンスでOpenAI互換のプロバイダーを選んでください。"
+
+#: src/app/screens/messages/audio_card.cpp
+msgid "Transcription needs an AI provider. Connect one in Settings → AI assistance."
+msgstr "文字起こしにはAIプロバイダーが必要です。設定 → AIアシスタンスで接続してください。"
+
+#: src/app/screens/messages/audio_card.cpp
+msgid "Could not read the file"
+msgstr "ファイルを読み込めませんでした"
+
+#: src/app/screens/messages/emoji_picker.cpp
+msgid "Search all emoji"
+msgstr "すべての絵文字を検索"
+
+#: src/app/screens/messages/emoji_picker.cpp
+msgid "Skin tone"
+msgstr "肌の色"
+
+#: src/app/screens/messages/emoji_picker.cpp
+msgid "Search results"
+msgstr "検索結果"
+
+#: src/app/screens/messages/emoji_picker.cpp
+msgid "Frequently used"
+msgstr "よく使う絵文字"
+
+#: src/app/screens/messages/emoji_picker.cpp src/app/screens/settings/settings_dialog.cpp
+msgid "Custom"
+msgstr "カスタム"
+
+#: src/app/screens/messages/message_dialogs.cpp
+msgid "Delete message"
+msgstr "メッセージを削除"
+
+#: src/app/screens/messages/message_dialogs.cpp
+msgid "This action cannot be undone."
+msgstr "この操作は元に戻せません。"
+
+#: src/app/screens/messages/message_dialogs.cpp src/app/screens/shell/shell_dialogs.cpp
+msgid "Delete"
+msgstr "削除"
+
+#: src/app/screens/messages/message_dialogs.cpp
+msgid "Moved from the channel · originally posted by %1 on %2 at %3"
+msgstr "チャンネルから移動 · 元の投稿者: %1（%2 %3）"
+
+#: src/app/screens/messages/message_dialogs.cpp
+msgid "(no text)"
+msgstr "（本文なし）"
+
+#: src/app/screens/messages/message_dialogs.cpp src/app/screens/messages/message_list.cpp src/app/screens/messages/rows.cpp src/app/screens/shell/standin.cpp
+msgid "1 reply"
+msgstr "1件の返信"
+
+#: src/app/screens/messages/message_dialogs.cpp src/app/screens/messages/message_list.cpp src/app/screens/messages/rows.cpp src/app/screens/shell/standin.cpp
+msgid "%1 replies"
+msgstr "%1件の返信"
+
+#: src/app/screens/messages/message_dialogs.cpp
+msgid "Move to thread"
+msgstr "スレッドに移動"
+
+#: src/app/screens/messages/message_dialogs.cpp
+msgid "Pick a thread in this channel. The message is posted there again by you, and the original is deleted."
+msgstr "このチャンネルのスレッドを選んでください。メッセージはあなたがスレッドに再投稿し、元のメッセージは削除されます。"
+
+#: src/app/screens/messages/message_dialogs.cpp
+msgid "Filter threads…"
+msgstr "スレッドを絞り込む…"
+
+#: src/app/screens/messages/message_dialogs.cpp
+msgid "No threads in this channel's loaded history yet."
+msgstr "読み込み済みの履歴にはまだスレッドがありません。"
+
+#: src/app/screens/messages/message_dialogs.cpp
+msgid "No threads match."
+msgstr "一致するスレッドはありません。"
+
+#: src/app/screens/messages/message_dialogs.cpp
+msgid "Add a note with the original author and time"
+msgstr "元の投稿者と日時のメモを添える"
+
+#: src/app/screens/messages/message_dialogs.cpp
+msgid "Move"
+msgstr "移動"
+
+#: src/app/screens/messages/message_dialogs.cpp
+msgid "Couldn't move the message — the original is still in place."
+msgstr "メッセージを移動できませんでした。元のメッセージはそのまま残っています。"
+
+#: src/app/screens/messages/message_dialogs.cpp src/app/screens/shell/shell_notify.cpp
+msgid "Reminder"
+msgstr "リマインダー"
+
+#: src/app/screens/messages/message_dialogs.cpp
+msgid "When"
+msgstr "日付"
+
+#: src/app/screens/messages/message_dialogs.cpp
+msgid "Time"
+msgstr "時刻"
+
+#: src/app/screens/messages/message_dialogs.cpp
+msgid "This file is empty"
+msgstr "このファイルは空です"
+
+#: src/app/screens/messages/message_dialogs.cpp
+msgid "Showing the first %1 of %2 rows"
+msgstr "全%2行のうち最初の%1行を表示しています"
+
+#: src/app/screens/messages/message_list.cpp src/app/screens/messages/rows.cpp
+msgid "Loading image…"
+msgstr "画像を読み込み中…"
+
+#: src/app/screens/messages/message_list.cpp
+msgid "Download"
+msgstr "ダウンロード"
+
+#: src/app/screens/messages/message_list.cpp src/app/screens/shell/shell_dialogs.cpp
+msgid "Forward"
+msgstr "転送"
+
+#: src/app/screens/messages/message_list.cpp src/app/screens/shell/canvas_viewer.cpp
+msgid "Open in browser"
+msgstr "ブラウザで開く"
+
+#: src/app/screens/messages/message_list.cpp src/app/screens/shell/sidebar.cpp
+msgid "More actions"
+msgstr "その他の操作"
+
+#: src/app/screens/messages/message_list.cpp src/app/screens/settings/settings_dialog.cpp src/app/screens/shell/canvas_viewer.cpp src/app/screens/shell/composer.cpp src/app/screens/shell/session_status_dialog.cpp src/app/screens/shell/shell.cpp src/app/screens/shell/workflow_form.cpp
+msgid "Close"
+msgstr "閉じる"
+
+#: src/app/screens/messages/message_list.cpp
+msgid "No messages yet"
+msgstr "まだメッセージはありません"
+
+#: src/app/screens/messages/message_list.cpp
+msgid "Oh my gosh, I really apologize, but your company is a reaaaly active Slack user. Still loading..."
+msgstr "申し訳ありません。御社は本っ当にSlackをよく使っていますね。まだ読み込み中です..."
+
+#: src/app/screens/messages/message_list.cpp
+msgid "Oh, you must have a lot of co-workers and messages! Still loading..."
+msgstr "同僚もメッセージもとても多いようですね！まだ読み込み中です..."
+
+#: src/app/screens/messages/message_list.cpp
+msgid "Loading your stuff..."
+msgstr "データを読み込み中..."
+
+#: src/app/screens/messages/message_list.cpp
+msgid "React with :%1:"
+msgstr ":%1: でリアクション"
+
+#: src/app/screens/messages/message_list.cpp
+msgid "Add reaction"
+msgstr "リアクションを追加"
+
+#: src/app/screens/messages/message_list.cpp
+msgid "Forward message"
+msgstr "メッセージを転送"
+
+#: src/app/screens/messages/message_list.cpp
+msgid "Save for later"
+msgstr "後で見るために保存"
+
+#: src/app/screens/messages/message_list.cpp
+msgid "Ask agent"
+msgstr "エージェントに質問"
+
+#: src/app/screens/messages/message_list.cpp
+msgid "Share"
+msgstr "共有"
+
+#: src/app/screens/messages/message_list.cpp
+msgid "file"
+msgstr "ファイル"
+
+#: src/app/screens/messages/message_list.cpp src/app/screens/shell/typing_indicator.cpp
+msgid "%1 is typing…"
+msgstr "%1が入力中…"
+
+#: src/app/screens/messages/message_list.cpp src/app/screens/shell/typing_indicator.cpp
+msgid "%1 are typing…"
+msgstr "%1が入力中…"
+
+#: src/app/screens/messages/message_list.cpp src/app/screens/messages/rows.cpp
+msgid "%1 and %2"
+msgstr "%1と%2"
+
+#: src/app/screens/messages/message_list.cpp
+msgid "Several people are typing…"
+msgstr "複数の人が入力中…"
+
+#: src/app/screens/messages/message_list.cpp
+msgid "Remove from saved"
+msgstr "保存済みから削除"
+
+#: src/app/screens/messages/message_list.cpp
+msgid "Open agent thread"
+msgstr "エージェントのスレッドを開く"
+
+#: src/app/screens/messages/message_list.cpp
+msgid "Sent to the app"
+msgstr "アプリに送信しました"
+
+#: src/app/screens/messages/message_list.cpp
+msgid "Slack doesn't let third-party apps press this kind of bot button"
+msgstr "Slack はサードパーティ製アプリからこの種類のボットボタンを押すことを許可していません"
+
+#: src/app/screens/messages/message_list.cpp
+msgid "Couldn't press the button: %1"
+msgstr "ボタンを押せませんでした: %1"
+
+#: src/app/screens/messages/message_list.cpp
+msgid "Reply in thread"
+msgstr "スレッドで返信"
+
+#: src/app/screens/messages/message_list.cpp
+msgid "Open thread"
+msgstr "スレッドを開く"
+
+#: src/app/screens/messages/message_list.cpp src/app/screens/messages/thread_panel.cpp
+msgid "Mute thread"
+msgstr "スレッドをミュート"
+
+#: src/app/screens/messages/message_list.cpp src/app/screens/messages/thread_panel.cpp
+msgid "Unmute thread"
+msgstr "スレッドのミュート解除"
+
+#: src/app/screens/messages/message_list.cpp
+msgid "Get notified about new replies"
+msgstr "新しい返信について通知を受け取る"
+
+#: src/app/screens/messages/message_list.cpp
+msgid "Turn off notifications for replies"
+msgstr "返信の通知をオフにする"
+
+#: src/app/screens/messages/message_list.cpp
+msgid "Edit message"
+msgstr "メッセージを編集"
+
+#: src/app/screens/messages/message_list.cpp src/app/screens/shell/canvas_page.cpp src/app/screens/shell/shell_dialogs.cpp
+msgid "Copy link"
+msgstr "リンクをコピー"
+
+#: src/app/screens/messages/message_list.cpp
+msgid "Copy link from message"
+msgstr "メッセージ内のリンクをコピー"
+
+#: src/app/screens/messages/message_list.cpp
+msgid "Copy message"
+msgstr "メッセージをコピー"
+
+#: src/app/screens/messages/message_list.cpp
+msgid "Mark unread"
+msgstr "未読にする"
+
+#: src/app/screens/messages/message_list.cpp
+msgid "Pin to channel"
+msgstr "チャンネルにピン留め"
+
+#: src/app/screens/messages/message_list.cpp
+msgid "Unpin from channel"
+msgstr "チャンネルへのピン留めを解除"
+
+#: src/app/screens/messages/message_list.cpp
+msgid "Remind me"
+msgstr "リマインドする"
+
+#: src/app/screens/messages/message_list.cpp
+msgid "Remove reminder"
+msgstr "リマインダーを削除"
+
+#: src/app/screens/messages/message_list.cpp
+msgid "Move to thread…"
+msgstr "スレッドに移動…"
+
+#: src/app/screens/messages/message_list.cpp
+msgid "Summarize down"
+msgstr "ここから下を要約"
+
+#: src/app/screens/messages/message_list.cpp
+msgid "Delete message…"
+msgstr "メッセージを削除…"
+
+#: src/app/screens/messages/message_list.cpp
+msgid "Open link"
+msgstr "リンクを開く"
+
+#: src/app/screens/messages/message_list.cpp
+msgid "Copy link to image"
+msgstr "画像へのリンクをコピー"
+
+#: src/app/screens/messages/message_list.cpp
+msgid "Copy link to file"
+msgstr "ファイルへのリンクをコピー"
+
+#: src/app/screens/messages/message_list.cpp
+msgid "Copy full image"
+msgstr "画像全体をコピー"
+
+#: src/app/screens/messages/message_list.cpp
+msgid "Preview"
+msgstr "プレビュー"
+
+#: src/app/screens/messages/message_list.cpp
+msgid "Delete file…"
+msgstr "ファイルを削除…"
+
+#: src/app/screens/messages/message_list.cpp
+msgid "Allow %1 to ask agent"
+msgstr "%1 がエージェントに質問できるようにする"
+
+#: src/app/screens/messages/message_list.cpp
+msgid "Unlink agent"
+msgstr "エージェントのリンクを解除"
+
+#: src/app/screens/messages/message_list.cpp
+msgid "In 20 minutes"
+msgstr "20分後"
+
+#: src/app/screens/messages/message_list.cpp
+msgid "In 1 hour"
+msgstr "1時間後"
+
+#: src/app/screens/messages/message_list.cpp
+msgid "In 3 hours"
+msgstr "3時間後"
+
+#: src/app/screens/messages/message_list.cpp
+msgid "Next week"
+msgstr "来週"
+
+#: src/app/screens/messages/message_list.cpp
+msgid "Delete image…"
+msgstr "画像を削除…"
+
+#: src/app/screens/messages/message_list.cpp
+msgid "Remind me about this…"
+msgstr "これについてリマインド…"
+
+#: src/app/screens/messages/message_list.cpp
+msgid "Custom…"
+msgstr "カスタム…"
+
+#: src/app/screens/messages/message_list.cpp
+msgid "image"
+msgstr "画像"
+
+#: src/app/screens/messages/message_list.cpp
+msgid "Copying %1"
+msgstr "%1をコピー中"
+
+#: src/app/screens/messages/message_list.cpp
+msgid "Couldn't remove the preview (%1)."
+msgstr "プレビューを削除できませんでした（%1）。"
+
+#: src/app/screens/messages/rich.cpp
+msgid "group message"
+msgstr "グループメッセージ"
+
+#: src/app/screens/messages/rich.cpp
+msgid "message"
+msgstr "メッセージ"
+
+#: src/app/screens/messages/rich.cpp src/app/screens/shell/composer.cpp
+msgid "GIF"
+msgstr "GIF"
+
+#: src/app/screens/messages/rich.cpp src/app/screens/messages/thread_export.cpp
+msgid "(edited)"
+msgstr "（編集済み）"
+
+#: src/app/screens/messages/rich.cpp src/app/screens/shell/profile_card.cpp
+msgid "Copied"
+msgstr "コピーしました"
+
+#: src/app/screens/messages/rich.cpp
+msgid "No email app — address copied"
+msgstr "メールアプリがないため、アドレスをコピーしました"
+
+#: src/app/screens/messages/rows.cpp src/app/screens/shell/header_jobs.cpp
+msgid "%1m"
+msgstr "%1分"
+
+#: src/app/screens/messages/rows.cpp src/app/screens/shell/header_jobs.cpp src/app/screens/shell/typing_indicator.cpp
+msgid "%1h %2m"
+msgstr "%1時間%2分"
+
+#: src/app/screens/messages/rows.cpp
+msgid "%1h"
+msgstr "%1時間"
+
+#: src/app/screens/messages/rows.cpp
+msgid "%n other"
+msgid_plural "%n others"
+msgstr[0] "他%n人"
+
+#: src/app/screens/messages/rows.cpp
+msgid "Nobody joined the huddle."
+msgstr "ハドルには誰も参加しませんでした。"
+
+#: src/app/screens/messages/rows.cpp
+msgid "The huddle is waiting for people to join."
+msgstr "ハドルの参加者を待っています。"
+
+#: src/app/screens/messages/rows.cpp
+msgid "%1 are in the huddle."
+msgstr "%1がハドルに参加しています。"
+
+#: src/app/screens/messages/rows.cpp
+msgid "%1 is in the huddle."
+msgstr "%1がハドルに参加しています。"
+
+#: src/app/screens/messages/rows.cpp
+msgid "%1 were in the huddle."
+msgstr "%1がハドルに参加しました。"
+
+#: src/app/screens/messages/rows.cpp
+msgid "%1 was in the huddle."
+msgstr "%1がハドルに参加しました。"
+
+#: src/app/screens/messages/rows.cpp
+msgid "%1 were in the huddle for %2."
+msgstr "%1がハドルに%2参加しました。"
+
+#: src/app/screens/messages/rows.cpp
+msgid "%1 was in the huddle for %2."
+msgstr "%1がハドルに%2参加しました。"
+
+#: src/app/screens/messages/rows.cpp
+msgid "Ended · lasted %1"
+msgstr "終了済み · %1"
+
+#: src/app/screens/messages/rows.cpp
+msgid "Started %1"
+msgstr "%1に開始"
+
+#: src/app/screens/messages/rows.cpp
+msgid "%1 were in the call"
+msgstr "%1が通話に参加していました"
+
+#: src/app/screens/messages/rows.cpp
+msgid "%1 was in the call"
+msgstr "%1が通話に参加していました"
+
+#: src/app/screens/messages/rows.cpp
+msgid "%1 are in the call"
+msgstr "%1が通話に参加しています"
+
+#: src/app/screens/messages/rows.cpp
+msgid "%1 is in the call"
+msgstr "%1が通話に参加しています"
+
+#: src/app/screens/messages/rows.cpp
+msgid "Waiting for people to join"
+msgstr "参加者を待っています"
+
+#: src/app/screens/messages/rows.cpp src/app/screens/shell/canvas_viewer.cpp src/app/screens/shell/files_page.cpp
+msgid "Canvas"
+msgstr "canvas"
+
+#: src/app/screens/messages/rows.cpp
+msgid "Preview unavailable"
+msgstr "プレビューを表示できません"
+
+#: src/app/screens/messages/rows.cpp
+msgid "Loading preview…"
+msgstr "プレビューを読み込み中…"
+
+#: src/app/screens/messages/rows.cpp
+msgid "Last reply"
+msgstr "最後の返信"
+
+#: src/app/screens/messages/rows.cpp
+msgid "Last reply %1"
+msgstr "最後の返信: %1"
+
+#: src/app/screens/messages/rows.cpp src/app/screens/messages/thread_panel.cpp src/app/screens/shell/shell.cpp src/app/screens/shell/shortcuts.cpp
+msgid "Close thread"
+msgstr "スレッドを閉じる"
+
+#: src/app/screens/messages/rows.cpp
+msgid "View thread"
+msgstr "スレッドを表示"
+
+#: src/app/screens/messages/rows.cpp
+msgid "%1 joined."
+msgstr "%1 が参加しました。"
+
+#: src/app/screens/messages/rows.cpp src/app/slack/slack_json.cpp
+msgid "A huddle happened"
+msgstr "ハドルが行われました"
+
+#: src/app/screens/messages/rows.cpp src/app/slack/slack_json.cpp
+msgid "A huddle started"
+msgstr "ハドルが開始されました"
+
+#: src/app/screens/messages/rows.cpp
+msgid "Pinned by %1"
+msgstr "%1がピン留めしました"
+
+#: src/app/screens/messages/rows.cpp
+msgid "Pinned"
+msgstr "ピン留め済み"
+
+#: src/app/screens/messages/rows.cpp
+msgid "Reminder — past due"
+msgstr "リマインダー — 期限超過"
+
+#: src/app/screens/messages/rows.cpp src/app/screens/shell/shell_notify.cpp
+msgid "Reminder — %1"
+msgstr "リマインダー — %1"
+
+#: src/app/screens/messages/rows.cpp src/app/screens/shell/saved_page.cpp
+msgid "Saved for later"
+msgstr "後で見るために保存済み"
+
+#: src/app/screens/messages/rows.cpp
+msgid "Call"
+msgstr "通話"
+
+#: src/app/screens/messages/rows.cpp
+msgid "Meeting ID: %1"
+msgstr "ミーティング ID: %1"
+
+#: src/app/screens/messages/rows.cpp
+msgid "Show less"
+msgstr "折りたたむ"
+
+#: src/app/screens/messages/rows.cpp src/app/screens/shell/activity_page.cpp
+msgid "Show more"
+msgstr "さらに表示"
+
+#: src/app/screens/messages/rows.cpp
+msgid "Unknown user"
+msgstr "不明なユーザー"
+
+#: src/app/screens/messages/rows.cpp
+msgid "Posted in %1"
+msgstr "%1に投稿"
+
+#: src/app/screens/messages/rows.cpp
+msgid "%1, %2"
+msgstr "%1、%2"
+
+#: src/app/screens/messages/rows.cpp
+msgid "%1 reacted with :%2:"
+msgstr "%1 が :%2: でリアクションしました"
+
+#: src/app/screens/messages/rows.cpp
+msgid "Loading replies…"
+msgstr "返信を読み込み中…"
+
+#: src/app/screens/messages/rows.cpp
+msgid "Reply to thread"
+msgstr "スレッドに返信"
+
+#: src/app/screens/messages/rows.cpp
+msgid "Remove preview"
+msgstr "プレビューを削除"
+
+#: src/app/screens/messages/rows.cpp
+msgid "Hide preview"
+msgstr "プレビューを非表示"
+
+#: src/app/screens/messages/summary.cpp
+msgid "[shared a file]"
+msgstr "[ファイルを共有しました]"
+
+#: src/app/screens/messages/summary.cpp
+msgid "[shared a file: %1]"
+msgstr "[ファイルを共有しました: %1]"
+
+#: src/app/screens/messages/summary.cpp
+msgid "Nothing to summarize — no text messages in the selected range."
+msgstr "要約する内容がありません — 選択した範囲にテキストメッセージがありません。"
+
+#: src/app/screens/messages/summary.cpp
+msgid "Couldn't summarize: %1"
+msgstr "要約できませんでした: %1"
+
+#: src/app/screens/messages/summary.cpp
+msgid "Summaries need an AI provider. Connect one in Settings → AI assistance."
+msgstr "要約にはAIプロバイダーが必要です。設定 → AIアシスタンスで接続してください。"
+
+#: src/app/screens/messages/summary.cpp
+msgid "Summarizing discussion…"
+msgstr "会話を要約しています…"
+
+#: src/app/screens/messages/summary.cpp
+msgid "Discussion summary"
+msgstr "会話の要約"
+
+#: src/app/screens/messages/summary.cpp src/app/screens/shell/shortcuts.cpp
+msgid "Open settings"
+msgstr "設定を開く"
+
+#: src/app/screens/messages/table_view.cpp
+msgid "Open full table"
+msgstr "テーブル全体を表示"
+
+#: src/app/screens/messages/thread_export.cpp
+msgid "[file: %1]"
+msgstr "[ファイル: %1]"
+
+#: src/app/screens/messages/thread_export.cpp
+msgid "untitled"
+msgstr "無題"
+
+#: src/app/screens/messages/thread_export.cpp src/app/screens/shell/activity_page.cpp
+msgid "Thread in %1"
+msgstr "%1のスレッド"
+
+#: src/app/screens/messages/thread_export.cpp
+msgid "Messages: %1"
+msgstr "メッセージ数: %1"
+
+#: src/app/screens/messages/thread_export.cpp
+msgid "Downloading thread…"
+msgstr "スレッドをダウンロード中…"
+
+#: src/app/screens/messages/thread_panel.cpp src/app/screens/shell/shell.cpp
+msgid "Thread"
+msgstr "スレッド"
+
+#: src/app/screens/messages/thread_panel.cpp
+msgid "Download thread as text"
+msgstr "スレッドをテキストとしてダウンロード"
+
+#: src/app/screens/messages/thread_panel.cpp
+msgid "Open as session"
+msgstr "セッションとして開く"
+
+#: src/app/screens/messages/thread_panel.cpp
+msgid "Also send to channel"
+msgstr "チャンネルにも送信"
+
+#: src/app/screens/messages/thread_panel.cpp
+msgid "Open the Slack thread: %1"
+msgstr "Slack のスレッドを開く: %1"
+
+#: src/app/screens/messages/thread_panel.cpp
+msgid "Save thread"
+msgstr "スレッドを保存"
+
+#: src/app/screens/settings/settings_dialog.cpp
+msgid "Appearance"
+msgstr "外観"
+
+#: src/app/screens/settings/settings_dialog.cpp
+msgid "Notifications"
+msgstr "通知"
+
+#: src/app/screens/settings/settings_dialog.cpp
+msgid "AI assistance"
+msgstr "AIアシスタンス"
+
+#: src/app/screens/settings/settings_dialog.cpp
+msgid "Storage"
+msgstr "ストレージ"
+
+#: src/app/screens/settings/settings_dialog.cpp
+msgid "System"
+msgstr "システム"
+
+#: src/app/screens/settings/settings_dialog.cpp
+msgid "About"
+msgstr "情報"
+
+#: src/app/screens/settings/settings_dialog.cpp
+msgid "Purple"
+msgstr "紫"
+
+#: src/app/screens/settings/settings_dialog.cpp
+msgid "Charcoal"
+msgstr "チャコール"
+
+#: src/app/screens/settings/settings_dialog.cpp
+msgid "Blue"
+msgstr "青"
+
+#: src/app/screens/settings/settings_dialog.cpp
+msgid "Green"
+msgstr "グリーン"
+
+#: src/app/screens/settings/settings_dialog.cpp
+msgid "System default"
+msgstr "システムのデフォルト"
+
+#: src/app/screens/settings/settings_dialog.cpp
+msgid "Dark %1"
+msgstr "ダーク %1"
+
+#: src/app/screens/settings/settings_dialog.cpp
+msgid "Light %1"
+msgstr "ライト %1"
+
+#: src/app/screens/settings/settings_dialog.cpp
+msgid "Choose emoji"
+msgstr "絵文字を選択"
+
+#: src/app/screens/settings/settings_dialog.cpp src/app/screens/shell/shell.cpp
+msgid "Settings"
+msgstr "設定"
+
+#: src/app/screens/settings/settings_dialog.cpp
+msgid "Color mode"
+msgstr "カラーモード"
+
+#: src/app/screens/settings/settings_dialog.cpp
+msgid "Light"
+msgstr "ライト"
+
+#: src/app/screens/settings/settings_dialog.cpp
+msgid "Dark"
+msgstr "ダーク"
+
+#: src/app/screens/settings/settings_dialog.cpp
+msgid "Color theme"
+msgstr "カラーテーマ"
+
+#: src/app/screens/settings/settings_dialog.cpp
+msgid "Font size"
+msgstr "文字サイズ"
+
+#: src/app/screens/settings/settings_dialog.cpp
+msgid "Small"
+msgstr "小"
+
+#: src/app/screens/settings/settings_dialog.cpp
+msgid "Medium (default)"
+msgstr "中（デフォルト）"
+
+#: src/app/screens/settings/settings_dialog.cpp
+msgid "Large"
+msgstr "大"
+
+#: src/app/screens/settings/settings_dialog.cpp
+msgid "Language"
+msgstr "言語"
+
+#: src/app/screens/settings/settings_dialog.cpp
+msgid "App language"
+msgstr "アプリの言語"
+
+#: src/app/screens/settings/settings_dialog.cpp
+msgid ""
+"The new language will be applied the next time MSGA starts.\n"
+"Time and date formats update immediately."
+msgstr ""
+"新しい言語は次回MSGAの起動時に適用されます。\n"
+"時刻と日付の形式はすぐに更新されます。"
+
+#: src/app/screens/settings/settings_dialog.cpp
+msgid "Date/Time"
+msgstr "日付と時刻"
+
+#: src/app/screens/settings/settings_dialog.cpp
+msgid "12-hour clock (2:34 PM)"
+msgstr "12時間表示（午後2:34）"
+
+#: src/app/screens/settings/settings_dialog.cpp
+msgid "24-hour clock (14:34)"
+msgstr "24時間表示（14:34）"
+
+#: src/app/screens/settings/settings_dialog.cpp src/app/screens/shell/activity_page.cpp src/app/screens/shell/sidebar.cpp src/app/screens/shell/threads_page.cpp
+msgid "Threads"
+msgstr "スレッド"
+
+#: src/app/screens/settings/settings_dialog.cpp
+msgid "Standalone (open replies in a side panel)"
+msgstr "スタンドアロン（サイドパネルで返信を開く）"
+
+#: src/app/screens/settings/settings_dialog.cpp
+msgid "Inline (expand replies under the message)"
+msgstr "インライン（メッセージの下に返信を展開）"
+
+#: src/app/screens/settings/settings_dialog.cpp
+msgid "One-click reactions"
+msgstr "ワンクリックリアクション"
+
+#: src/app/screens/settings/settings_dialog.cpp
+msgid "Off"
+msgstr "オフ"
+
+#: src/app/screens/settings/settings_dialog.cpp
+msgid "My most frequently used emoji"
+msgstr "よく使う絵文字"
+
+#: src/app/screens/settings/settings_dialog.cpp
+msgid "Shown on a message's toolbar: a click adds the reaction, another takes it back."
+msgstr "メッセージのツールバーに表示されます。クリックでリアクションを追加し、もう一度クリックで取り消します。"
+
+#: src/app/screens/settings/settings_dialog.cpp
+msgid "Names"
+msgstr "名前の表示"
+
+#: src/app/screens/settings/settings_dialog.cpp
+msgid "As set in Slack"
+msgstr "Slack の設定に従う"
+
+#: src/app/screens/settings/settings_dialog.cpp
+msgid "Full names"
+msgstr "氏名"
+
+#: src/app/screens/settings/settings_dialog.cpp
+msgid "Display names"
+msgstr "表示名"
+
+#: src/app/screens/settings/settings_dialog.cpp
+msgid "Where a person has no display name, their full name is shown."
+msgstr "表示名が設定されていない人は、氏名で表示されます。"
+
+#: src/app/screens/settings/settings_dialog.cpp
+msgid "Link previews"
+msgstr "リンクプレビュー"
+
+#: src/app/screens/settings/settings_dialog.cpp
+msgid "Show link previews"
+msgstr "リンクプレビューを表示"
+
+#: src/app/screens/settings/settings_dialog.cpp
+msgid ""
+"Show web, app, and shared-message link previews and load their images automatically.\n"
+"When off, links stay clickable. This setting only affects your client."
+msgstr ""
+"ウェブ、アプリ、共有メッセージのリンクプレビューを表示し、画像を自動的に読み込みます。\n"
+"オフにしてもリンクはクリックできます。この設定はこのクライアントにのみ適用されます。"
+
+#: src/app/screens/settings/settings_dialog.cpp
+msgid "Composer"
+msgstr "メッセージ入力"
+
+#: src/app/screens/settings/settings_dialog.cpp
+msgid "Send with %1"
+msgstr "%1 で送信"
+
+#: src/app/screens/settings/settings_dialog.cpp
+msgid "Check spelling"
+msgstr "スペルをチェック"
+
+#: src/app/screens/settings/settings_dialog.cpp
+msgid "A word is underlined when none of the checked languages knows it."
+msgstr "チェックしたどの言語の辞書にもない単語に下線が引かれます。"
+
+#: src/app/screens/settings/settings_dialog.cpp
+msgid "Formatting"
+msgstr "書式"
+
+#: src/app/screens/settings/settings_dialog.cpp
+msgid "Slack (*bold*, _italic_)"
+msgstr "Slack（*太字*、_斜体_）"
+
+#: src/app/screens/settings/settings_dialog.cpp
+msgid "Markdown (**bold**, *italic*)"
+msgstr "Markdown（**太字**、*斜体*）"
+
+#: src/app/screens/settings/settings_dialog.cpp
+msgid ""
+"How the message box reads what you type.\n"
+"Messages are sent in Slack's format either way."
+msgstr ""
+"入力した記号の読み方です。\n"
+"どちらの場合も、メッセージは Slack の書式で送信されます。"
+
+#: src/app/screens/settings/settings_dialog.cpp
+msgid "Smileys"
+msgstr "顔文字"
+
+#: src/app/screens/settings/settings_dialog.cpp
+msgid "Turn text smileys into emoji"
+msgstr "テキストの顔文字を絵文字に変換"
+
+#: src/app/screens/settings/settings_dialog.cpp
+msgid "\":)\" becomes 🙂 as you type, once a space or the end of the message closes it."
+msgstr "「:)」は入力中に「🙂」になります（空白かメッセージの最後で確定します）。"
+
+#: src/app/screens/settings/settings_dialog.cpp
+msgid "One to a line: the smiley, then the emoji — its shortcode or the character itself. Empty keeps the usual set."
+msgstr "1行に1組：顔文字、空白、絵文字（ショートコードか文字そのもの）。空欄なら標準の一覧を使います。"
+
+#: src/app/screens/settings/settings_dialog.cpp
+msgid "Conversations"
+msgstr "会話"
+
+#: src/app/screens/settings/settings_dialog.cpp
+msgid "Show conversations active in the last"
+msgstr "次の期間内に活動のあった会話を表示:"
+
+#: src/app/screens/settings/settings_dialog.cpp
+msgid " days"
+msgstr " 日"
+
+#: src/app/screens/settings/settings_dialog.cpp
+msgid ""
+"Conversations with no activity in this period are hidden\n"
+"under an \"N more...\" row at the bottom of each section."
+msgstr ""
+"この期間に活動がない会話は、各セクション下部の\n"
+"「他N件...」の行に隠れます。"
+
+#: src/app/screens/settings/settings_dialog.cpp
+msgid "Show the Agents & apps section"
+msgstr "「エージェントとアプリ」セクションを表示"
+
+#: src/app/screens/settings/settings_dialog.cpp
+msgid "Show the External connections section"
+msgstr "「外部との接続」セクションを表示"
+
+#: src/app/screens/settings/settings_dialog.cpp
+msgid "Show direct messages and External connections at the top"
+msgstr "ダイレクトメッセージと「外部との接続」を一番上に表示"
+
+#: src/app/screens/settings/settings_dialog.cpp
+msgid ""
+"External connections moves up only while its section is shown.\n"
+"In a Claude Code workspace, Sessions moves up."
+msgstr ""
+"「外部との接続」は、そのセクションを表示している間だけ上に移ります。\n"
+"Claude Codeのワークスペースでは「セッション」が上に移ります。"
+
+#: src/app/screens/settings/settings_dialog.cpp
+msgid "Show only unread conversations"
+msgstr "未読の会話のみ表示"
+
+#: src/app/screens/settings/settings_dialog.cpp
+msgid ""
+"The conversation you are reading stays listed until you move on.\n"
+"Drafts are always shown, and so are starred conversations and your\n"
+"sections unless you hide their read ones below."
+msgstr ""
+"閲覧中の会話は、別の会話に移るまで表示されたままになります。\n"
+"下書きは常に表示されます。スター付きの会話とセクションも、下で既読のものを\n"
+"非表示にしない限り表示されます。"
+
+#: src/app/screens/settings/settings_dialog.cpp
+msgid "Hide read conversations in your sections too"
+msgstr "セクション内の既読の会話も非表示"
+
+#: src/app/screens/settings/settings_dialog.cpp
+msgid "Hide read starred conversations too"
+msgstr "スター付きの既読の会話も非表示"
+
+#: src/app/screens/settings/settings_dialog.cpp
+msgid "Visual effects"
+msgstr "視覚効果"
+
+#: src/app/screens/settings/settings_dialog.cpp
+msgid "Animate emoji"
+msgstr "絵文字をアニメーション表示"
+
+#: src/app/screens/settings/settings_dialog.cpp
+msgid "Animate GIFs and images in messages"
+msgstr "メッセージ内のGIFや画像をアニメーション表示"
+
+#: src/app/screens/settings/settings_dialog.cpp
+msgid "Turning an effect off shows a still image instead and saves memory and CPU."
+msgstr "オフにすると静止画が表示され、メモリとCPUを節約できます。"
+
+#: src/app/screens/settings/settings_dialog.cpp src/app/screens/shell/shell_dialogs.cpp
+msgid "Tray icon"
+msgstr "トレイアイコン"
+
+#: src/app/screens/settings/settings_dialog.cpp
+msgid "Use custom tray icon"
+msgstr "カスタムのトレイアイコンを使う"
+
+#: src/app/screens/settings/settings_dialog.cpp src/app/screens/shell/context_menus.cpp
+msgid "Change icon…"
+msgstr "アイコンを変更…"
+
+#: src/app/screens/settings/settings_dialog.cpp
+msgid "Dark theme"
+msgstr "ダークテーマ"
+
+#: src/app/screens/settings/settings_dialog.cpp
+msgid "Light theme"
+msgstr "ライトテーマ"
+
+#: src/app/screens/settings/settings_dialog.cpp
+msgid "Follows the system setting (currently dark)"
+msgstr "システム設定に従います（現在: ダーク）"
+
+#: src/app/screens/settings/settings_dialog.cpp
+msgid "Follows the system setting (currently light)"
+msgstr "システム設定に従います（現在: ライト）"
+
+#: src/app/screens/settings/settings_dialog.cpp
+msgid "No spelling languages are available on this system."
+msgstr "このシステムにはスペルチェックに使える言語がありません。"
+
+#: src/app/screens/settings/settings_dialog.cpp
+msgid "No spelling dictionaries were found. Install the one for your language (for example the %1 package) and open Settings again."
+msgstr "スペルチェック用の辞書が見つかりません。お使いの言語の辞書（例: %1 パッケージ）をインストールしてから、設定を開き直してください。"
+
+#: src/app/screens/settings/settings_dialog.cpp
+msgid "Custom theme"
+msgstr "カスタムテーマ"
+
+#: src/app/screens/settings/settings_dialog.cpp
+msgid "Paste a Slack theme (colour list or JSON)"
+msgstr "Slack のテーマを貼り付け（色のリストまたは JSON）"
+
+#: src/app/screens/settings/settings_dialog.cpp
+msgid "Import"
+msgstr "インポート"
+
+#: src/app/screens/settings/settings_dialog.cpp
+msgid "Not a Slack theme. Paste 8 or 10 colours separated by commas, or theme JSON."
+msgstr "Slack のテーマではありません。カンマ区切りの 8 色または 10 色、またはテーマの JSON を貼り付けてください。"
+
+#: src/app/screens/settings/settings_dialog.cpp
+msgid "Theme imported"
+msgstr "テーマをインポートしました"
+
+#: src/app/screens/settings/settings_dialog.cpp
+msgid "Darker sidebar"
+msgstr "サイドバーを暗くする"
+
+#: src/app/screens/settings/settings_dialog.cpp
+msgid "Window gradient"
+msgstr "ウィンドウのグラデーション"
+
+#: src/app/screens/settings/settings_dialog.cpp
+msgid "Low contrast: sidebar text may be hard to read"
+msgstr "コントラストが低いため、サイドバーの文字が読みにくい可能性があります"
+
+#: src/app/screens/settings/settings_dialog.cpp
+msgid "Copy theme"
+msgstr "テーマをコピー"
+
+#: src/app/screens/settings/settings_dialog.cpp
+msgid "Use my Slack theme"
+msgstr "Slack のテーマを使う"
+
+#: src/app/screens/settings/settings_dialog.cpp
+msgid "Reading your Slack theme…"
+msgstr "Slack のテーマを読み込んでいます…"
+
+#: src/app/screens/settings/settings_dialog.cpp
+msgid "Could not read your Slack theme (%1)"
+msgstr "Slack のテーマを読み取れませんでした（%1）"
+
+#: src/app/screens/settings/settings_dialog.cpp
+msgid "Your Slack account has no custom theme"
+msgstr "Slack アカウントにカスタムテーマがありません"
+
+#: src/app/screens/settings/settings_dialog.cpp
+msgid "Slack theme applied"
+msgstr "Slack のテーマを適用しました"
+
+#: src/app/screens/settings/settings_dialog.cpp
+msgid "Theme copied: paste it into Slack's Import theme field"
+msgstr "テーマをコピーしました。Slack の「テーマをインポート」欄に貼り付けてください"
+
+#: src/app/screens/settings/settings_dialog.cpp
+msgid "Enable desktop notifications"
+msgstr "デスクトップ通知を有効にする"
+
+#: src/app/screens/settings/settings_dialog.cpp
+msgid "All new messages"
+msgstr "すべての新着メッセージ"
+
+#: src/app/screens/settings/settings_dialog.cpp
+msgid "Direct messages and mentions only"
+msgstr "ダイレクトメッセージとメンションのみ"
+
+#: src/app/screens/settings/settings_dialog.cpp
+msgid "Notify me when a huddle starts"
+msgstr "ハドルが開始したら通知する"
+
+#: src/app/screens/settings/settings_dialog.cpp
+msgid "Highlight mentions-only channels for any new message"
+msgstr "「メンションのみ」のチャンネルも新着メッセージがあれば強調表示する"
+
+#: src/app/screens/settings/settings_dialog.cpp
+msgid "Play a sound for notifications"
+msgstr "通知音を鳴らす"
+
+#: src/app/screens/settings/settings_dialog.cpp
+msgid "Sound:"
+msgstr "サウンド:"
+
+#: src/app/screens/settings/settings_dialog.cpp
+msgid "Test"
+msgstr "テスト"
+
+#: src/app/screens/settings/settings_dialog.cpp
+msgid "App icon badge"
+msgstr "アプリアイコンのバッジ"
+
+#: src/app/screens/settings/settings_dialog.cpp
+msgid "All unread messages"
+msgstr "すべての未読メッセージ"
+
+#: src/app/screens/settings/settings_dialog.cpp
+msgid "Sample notifications"
+msgstr "通知のサンプル"
+
+#: src/app/screens/settings/settings_dialog.cpp
+msgid "New DM"
+msgstr "新しいダイレクトメッセージ"
+
+#: src/app/screens/settings/settings_dialog.cpp
+msgid "New channel message"
+msgstr "新しいチャンネルメッセージ"
+
+#: src/app/screens/settings/settings_dialog.cpp
+msgid "New huddle"
+msgstr "新しいハドル"
+
+#: src/app/screens/settings/settings_dialog.cpp
+msgid "Sample User"
+msgstr "サンプルユーザー"
+
+#: src/app/screens/settings/settings_dialog.cpp
+msgid "Hey — do you have a minute?"
+msgstr "ちょっといいですか？"
+
+#: src/app/screens/settings/settings_dialog.cpp
+msgid "%1: Heads up, the deploy is going out at 3pm"
+msgstr "%1: お知らせ、デプロイは15時に行われます"
+
+#: src/app/screens/settings/settings_dialog.cpp src/app/screens/shell/shell_notify.cpp
+msgid "%1 started a huddle"
+msgstr "%1さんがハドルを開始しました"
+
+#: src/app/screens/settings/settings_dialog.cpp src/app/screens/shell/huddle_banner.cpp src/app/screens/shell/shell_notify.cpp src/app/slack/slack_json.cpp
+msgid "Join"
+msgstr "参加"
+
+#: src/app/screens/settings/settings_pages.cpp
+msgid "key"
+msgstr "キー"
+
+#: src/app/screens/settings/settings_pages.cpp
+msgid "AI provider"
+msgstr "AIプロバイダー"
+
+#: src/app/screens/settings/settings_pages.cpp
+msgid ""
+"Connect an AI provider to enable assistant features.\n"
+"API keys are stored on this computer and sent only to the provider you configure."
+msgstr ""
+"AIプロバイダーを接続するとアシスタント機能が使えます。\n"
+"APIキーはこのコンピューターに保存され、設定したプロバイダーにのみ送信されます。"
+
+#: src/app/screens/settings/settings_pages.cpp
+msgid "Add OpenAI-compatible server…"
+msgstr "OpenAI互換サーバーを追加…"
+
+#: src/app/screens/settings/settings_pages.cpp
+msgid "Company vLLM"
+msgstr "社内のvLLM"
+
+#: src/app/screens/settings/settings_pages.cpp
+msgid "Server URL"
+msgstr "サーバーURL"
+
+#: src/app/screens/settings/settings_pages.cpp
+msgid "Works with vLLM, Ollama, LM Studio, LiteLLM, OpenRouter and other OpenAI-compatible servers."
+msgstr "vLLM、Ollama、LM Studio、LiteLLM、OpenRouter などの OpenAI 互換サーバーで使えます。"
+
+#: src/app/screens/settings/settings_pages.cpp
+msgid "Unencrypted connection — the API key is sent in plain text."
+msgstr "暗号化されていない接続です — APIキーが平文で送信されます。"
+
+#: src/app/screens/settings/settings_pages.cpp
+msgid "API key"
+msgstr "APIキー"
+
+#: src/app/screens/settings/settings_pages.cpp
+msgid "Model name"
+msgstr "モデル名"
+
+#: src/app/screens/settings/settings_pages.cpp
+msgid "Fetch models"
+msgstr "モデルを取得"
+
+#: src/app/screens/settings/settings_pages.cpp
+msgid "Speech model"
+msgstr "音声モデル"
+
+#: src/app/screens/settings/settings_pages.cpp
+msgid "Speech-to-text model for voice input and audio transcripts. Leave empty for the default."
+msgstr "音声入力と音声の文字起こしに使うモデルです。空欄の場合は既定のモデルを使います。"
+
+#: src/app/screens/settings/settings_pages.cpp
+msgid "Test connection"
+msgstr "接続をテスト"
+
+#: src/app/screens/settings/settings_pages.cpp
+msgid "Your language"
+msgstr "あなたの言語"
+
+#: src/app/screens/settings/settings_pages.cpp
+msgid ""
+"AI features address you in this language.\n"
+"It follows the app language until you pick one here."
+msgstr ""
+"AI機能はこの言語で応答します。\n"
+"ここで選択するまではアプリの言語に従います。"
+
+#: src/app/screens/settings/settings_pages.cpp
+msgid "Native language:"
+msgstr "母国語:"
+
+#: src/app/screens/settings/settings_pages.cpp src/app/screens/shell/composer.cpp src/app/screens/shell/shortcuts.cpp
+msgid "Voice input"
+msgstr "音声入力"
+
+#: src/app/screens/settings/settings_pages.cpp
+msgid ""
+"Dictate messages with the microphone button in the message box. When you dictate, the recording and the conversation's recent messages are sent to your AI provider.\n"
+"The speech-to-text model is set in each provider's settings above."
+msgstr ""
+"メッセージ欄のマイクボタンで、メッセージを音声で入力できます。音声入力を使うと、録音と会話の最近のメッセージがAIプロバイダーに送信されます。\n"
+"文字起こしのモデルは、上の各プロバイダーの設定で指定します。"
+
+#: src/app/screens/settings/settings_pages.cpp
+msgid "Voice input needs an OpenAI or OpenAI-compatible provider with speech-to-text."
+msgstr "音声入力には、文字起こしに対応したOpenAIまたはOpenAI互換のプロバイダーが必要です。"
+
+#: src/app/screens/settings/settings_pages.cpp
+msgid "Glossary"
+msgstr "用語集"
+
+#: src/app/screens/settings/settings_pages.cpp
+msgid "Names, product terms and jargon to spell correctly, one per line."
+msgstr "正しく表記したい名前、製品名、専門用語を1行に1つずつ入力します。"
+
+#: src/app/screens/settings/settings_pages.cpp
+msgid "Clean up with AI"
+msgstr "AIで整える"
+
+#: src/app/screens/settings/settings_pages.cpp
+msgid "Removes filler words and false starts using your AI provider."
+msgstr "AIプロバイダーを使って、「えー」などのつなぎ言葉や言い直しを取り除きます。"
+
+#: src/app/screens/settings/settings_pages.cpp
+msgid "Connect"
+msgstr "接続"
+
+#: src/app/screens/settings/settings_pages.cpp src/app/screens/shell/composer_popups.cpp
+msgid "Edit"
+msgstr "編集"
+
+#: src/app/screens/settings/settings_pages.cpp
+msgid "Disconnect"
+msgstr "切断"
+
+#: src/app/screens/settings/settings_pages.cpp src/app/screens/shell/saved_page.cpp src/app/screens/shell/session_dialogs.cpp src/app/screens/shell/workflow_form.cpp
+msgid "Remove"
+msgstr "削除"
+
+#: src/app/screens/settings/settings_pages.cpp
+msgid "Connected (%1)"
+msgstr "接続済み（%1）"
+
+#: src/app/screens/settings/settings_pages.cpp
+msgid "Not connected"
+msgstr "未接続"
+
+#: src/app/screens/settings/settings_pages.cpp
+msgid "Add OpenAI-compatible server"
+msgstr "OpenAI互換サーバーを追加"
+
+#: src/app/screens/settings/settings_pages.cpp src/app/screens/shell/status_dialog.cpp
+msgid "Optional"
+msgstr "任意"
+
+#: src/app/screens/settings/settings_pages.cpp
+msgid "Leave empty if the server doesn't need one."
+msgstr "サーバーが必要としない場合は空欄のままにしてください。"
+
+#: src/app/screens/settings/settings_pages.cpp
+msgid "Connect %1"
+msgstr "%1に接続"
+
+#: src/app/screens/settings/settings_pages.cpp
+msgid "Key saved (%1) — leave empty to keep it"
+msgstr "キーは保存済み（%1）— そのまま使う場合は空欄にしてください"
+
+#: src/app/screens/settings/settings_pages.cpp
+msgid "Paste your API key"
+msgstr "APIキーを貼り付け"
+
+#: src/app/screens/settings/settings_pages.cpp
+msgid "Get an API key from %1…"
+msgstr "%1でAPIキーを取得…"
+
+#: src/app/screens/settings/settings_pages.cpp
+msgid "Enter the server URL first"
+msgstr "まずサーバーURLを入力してください"
+
+#: src/app/screens/settings/settings_pages.cpp
+msgid "Connecting…"
+msgstr "接続中…"
+
+#: src/app/screens/settings/settings_pages.cpp
+msgid "Reached the server — %n model available"
+msgid_plural "Reached the server — %n models available"
+msgstr[0] "サーバーに到達しました — 利用可能なモデル: %n 件"
+
+#: src/app/screens/settings/settings_pages.cpp
+msgid "Enter the server URL (for example http://localhost:8000/v1)"
+msgstr "サーバーURLを入力してください（例: http://localhost:8000/v1）"
+
+#: src/app/screens/settings/settings_pages.cpp
+msgid "Enter a model name, or fetch the list from the server"
+msgstr "モデル名を入力するか、サーバーから一覧を取得してください"
+
+#: src/app/screens/settings/settings_pages.cpp
+msgid "Cache"
+msgstr "キャッシュ"
+
+#: src/app/screens/settings/settings_pages.cpp
+msgid "Cache size:"
+msgstr "キャッシュサイズ:"
+
+#: src/app/screens/settings/settings_pages.cpp
+msgid ""
+"Conversations, user names, message history, and image thumbnails\n"
+"stored locally to speed up startup."
+msgstr ""
+"起動を高速化するため、会話、ユーザー名、メッセージ履歴、\n"
+"画像サムネイルをローカルに保存しています。"
+
+#: src/app/screens/settings/settings_pages.cpp
+msgid "Limit cache to"
+msgstr "キャッシュ上限:"
+
+#: src/app/screens/settings/settings_pages.cpp
+msgid " MB"
+msgstr " MB"
+
+#: src/app/screens/settings/settings_pages.cpp
+msgid ""
+"When the cache grows past this limit, the least recently\n"
+"viewed images are deleted first."
+msgstr ""
+"キャッシュがこの上限を超えると、最も長く表示されていない\n"
+"画像から順に削除されます。"
+
+#: src/app/screens/settings/settings_pages.cpp
+msgid "Clear cache"
+msgstr "キャッシュをクリア"
+
+#: src/app/screens/settings/settings_pages.cpp
+msgid "State"
+msgstr "状態"
+
+#: src/app/screens/settings/settings_pages.cpp
+msgid ""
+"Sidebar visit history used to decide which conversations are shown.\n"
+"Clear this to let the app re-analyse activity from scratch on next load."
+msgstr ""
+"どの会話を表示するかの判断に使う、サイドバーの閲覧履歴です。\n"
+"クリアすると、次回読み込み時に活動を最初から分析し直します。"
+
+#: src/app/screens/settings/settings_pages.cpp
+msgid "Clear state"
+msgstr "状態をクリア"
+
+#: src/app/screens/settings/settings_pages.cpp
+msgid "Version %1, built %2"
+msgstr "バージョン %1（ビルド: %2）"
+
+#: src/app/screens/settings/settings_pages.cpp
+msgid "Check for updates automatically"
+msgstr "更新を自動的に確認する"
+
+#: src/app/screens/settings/settings_pages.cpp
+msgid ""
+"When off, msga never contacts the update server on its own — use the\n"
+"button below to look for a new version."
+msgstr ""
+"オフにすると、msga は自動で更新サーバーに接続しません。\n"
+"新しいバージョンを探すときは下のボタンを使ってください。"
+
+#: src/app/screens/settings/settings_pages.cpp
+msgid "Check for updates"
+msgstr "アップデートを確認"
+
+#: src/app/screens/settings/settings_pages.cpp
+msgid "Last checked: %1"
+msgstr "最終確認: %1"
+
+#: src/app/screens/settings/settings_pages.cpp
+msgid "Never checked"
+msgstr "未確認"
+
+#: src/app/screens/settings/settings_pages.cpp
+msgid "Update checks not available."
+msgstr "アップデートの確認は利用できません。"
+
+#: src/app/screens/settings/settings_pages.cpp
+msgid "Checking for updates…"
+msgstr "アップデートを確認中…"
+
+#: src/app/screens/settings/settings_pages.cpp
+msgid "Update downloaded — restart the app to apply."
+msgstr "アップデートをダウンロードしました — 適用するにはアプリを再起動してください。"
+
+#: src/app/screens/settings/settings_pages.cpp
+msgid "msga is up to date."
+msgstr "msgaは最新の状態です。"
+
+#: src/app/screens/settings/settings_pages.cpp
+msgid "Version %1 available — downloading…"
+msgstr "バージョン%1が利用可能です — ダウンロード中…"
+
+#: src/app/screens/settings/settings_pages.cpp
+msgid "Downloading update… %1%"
+msgstr "アップデートをダウンロード中… %1%"
+
+#: src/app/screens/settings/settings_pages.cpp
+msgid "Check failed: %1"
+msgstr "確認に失敗しました: %1"
+
+#: src/app/screens/settings/settings_pages.cpp
+msgid "Window"
+msgstr "ウィンドウ"
+
+#: src/app/screens/settings/settings_pages.cpp
+msgid "Use tray"
+msgstr "トレイを使用"
+
+#: src/app/screens/settings/settings_pages.cpp
+msgid "Minimize to tray"
+msgstr "トレイに最小化"
+
+#: src/app/screens/settings/settings_pages.cpp
+msgid ""
+"When on, minimizing hides the window to the tray instead of the taskbar.\n"
+"Click the tray icon to bring it back."
+msgstr ""
+"オンにすると、最小化したときにウィンドウはタスクバーではなくトレイに隠れます。\n"
+"トレイアイコンをクリックすると元に戻ります。"
+
+#: src/app/screens/settings/settings_pages.cpp
+msgid "Presence"
+msgstr "プレゼンス"
+
+#: src/app/screens/settings/settings_pages.cpp
+msgid "Show me as active while MSGA is running"
+msgstr "MSGAの実行中はアクティブと表示する"
+
+#: src/app/screens/settings/settings_pages.cpp
+msgid "Show me as active while I use MSGA (away after 30 minutes without input)"
+msgstr "MSGAを使用している間はアクティブと表示する（30分間入力がないと離席中）"
+
+#: src/app/screens/settings/settings_pages.cpp
+msgid "Leave my presence to the official Slack apps"
+msgstr "プレゼンスは公式Slackアプリに任せる"
+
+#: src/app/screens/settings/settings_pages.cpp
+msgid "Slack only shows you as active while a Slack app is connected. MSGA can hold that connection itself, so you no longer need the official app open to look online. The Hide button still makes you appear away. Works for workspaces added with a Slack session."
+msgstr "Slackは、Slackアプリが接続されている間だけあなたをアクティブと表示します。MSGAがその接続を自身で維持できるため、オンラインに見せるために公式アプリを開いておく必要はなくなります。非表示ボタンを押せば引き続き離席中と表示されます。Slackセッションで追加したワークスペースで動作します。"
+
+#: src/app/screens/settings/settings_pages.cpp
+msgid "Slack connection"
+msgstr "Slack接続"
+
+#: src/app/screens/settings/settings_pages.cpp
+msgid "Choose how msga connects to Slack."
+msgstr "msgaがSlackに接続する方法を選びます。"
+
+#: src/app/screens/settings/settings_pages.cpp
+msgid "Slack session — no app keys, uses your own account's limits"
+msgstr "Slackセッション — アプリキーなし、自分のアカウントの制限を使います"
+
+#: src/app/screens/settings/settings_pages.cpp
+msgid "Slack app keys — OAuth sign-in with live message push"
+msgstr "Slackアプリキー — OAuthでサインイン、メッセージはリアルタイムに届きます"
+
+#: src/app/screens/settings/settings_pages.cpp
+msgid "Restart msga to apply this change."
+msgstr "この変更を適用するにはmsgaを再起動してください。"
+
+#: src/app/screens/settings/settings_pages.cpp
+msgid "Add a workspace using your existing Slack session. New messages arrive by polling — there's no live push in this mode."
+msgstr "既存のSlackセッションを使ってワークスペースを追加します。新しいメッセージはポーリングで届きます — このモードではリアルタイムのプッシュ配信はありません。"
+
+#: src/app/screens/settings/settings_pages.cpp
+msgid "Import Slack session…"
+msgstr "Slackセッションをインポート…"
+
+#: src/app/screens/settings/settings_pages.cpp
+msgid "You still have %n Slack workspace on app keys. Convert them to session so no workspace uses Socket Mode."
+msgid_plural "You still have %n Slack workspaces on app keys. Convert them to session so no workspace uses Socket Mode."
+msgstr[0] "アプリキーを使っているSlackワークスペースがまだ %n 件あります。すべてセッションに切り替えると、どのワークスペースもSocket Modeを使わなくなります。"
+
+#: src/app/screens/settings/settings_pages.cpp
+msgid "Convert them to session"
+msgstr "セッションに切り替える"
+
+#: src/app/screens/settings/settings_pages.cpp
+msgid "Run your own Slack app so you don't share connection keys with other devices and users. Leave a field empty to use the built-in default."
+msgstr "独自のSlackアプリを使用すると、接続キーを他のデバイスやユーザーと共有せずに済みます。空欄にすると組み込みの既定値が使用されます。"
+
+#: src/app/screens/settings/settings_pages.cpp
+msgid "How to create your Slack app…"
+msgstr "Slackアプリの作成方法…"
+
+#: src/app/screens/settings/settings_pages.cpp
+msgid "Client ID"
+msgstr "クライアントID"
+
+#: src/app/screens/settings/settings_pages.cpp
+msgid "e.g. 1234567890.1234567890"
+msgstr "例: 1234567890.1234567890"
+
+#: src/app/screens/settings/settings_pages.cpp
+msgid "Client secret"
+msgstr "クライアントシークレット"
+
+#: src/app/screens/settings/settings_pages.cpp
+msgid "Paste your client secret"
+msgstr "クライアントシークレットを貼り付け"
+
+#: src/app/screens/settings/settings_pages.cpp
+msgid "App-level token"
+msgstr "アプリレベルトークン"
+
+#: src/app/screens/settings/settings_pages.cpp
+msgid "Paste your xapp- token"
+msgstr "xapp- トークンを貼り付け"
+
+#: src/app/screens/settings/settings_pages.cpp
+msgid "Save and restart"
+msgstr "保存して再起動"
+
+#: src/app/screens/settings/settings_pages.cpp
+msgid "No changes to save."
+msgstr "保存する変更はありません。"
+
+#: src/app/screens/settings/settings_pages.cpp
+msgid "Saved. Restarting…"
+msgstr "保存しました。再起動しています…"
+
+#: src/app/screens/settings/settings_pages.cpp
+msgid "GIF picker"
+msgstr "GIFピッカー"
+
+#: src/app/screens/settings/settings_pages.cpp
+msgid "Searching GIFs from the message box needs a GIPHY API key. Free keys allow 100 searches an hour, which is plenty for personal use."
+msgstr "メッセージ入力欄からGIFを検索するにはGIPHYのAPIキーが必要です。無料のキーで1時間に100回まで検索でき、個人利用には十分です。"
+
+#: src/app/screens/settings/settings_pages.cpp
+msgid "Get a GIPHY API key…"
+msgstr "GIPHYのAPIキーを取得…"
+
+#: src/app/screens/settings/settings_pages.cpp src/app/screens/shell/composer_popups.cpp
+msgid "Paste your GIPHY API key"
+msgstr "GIPHYのAPIキーを貼り付け"
+
+#: src/app/screens/settings/settings_pages.cpp
+msgid "Using this build's key — paste one here to override it"
+msgstr "このビルドのキーを使用中 — 上書きするにはここに貼り付けてください"
+
+#: src/app/screens/settings/settings_pages.cpp
+msgid "Key cleared."
+msgstr "キーを消去しました。"
+
+#: src/app/screens/settings/settings_pages.cpp
+msgid "Key saved."
+msgstr "キーを保存しました。"
+
+#: src/app/screens/settings/settings_pages.cpp
+msgid "Memory"
+msgstr "メモリ"
+
+#: src/app/screens/settings/settings_pages.cpp
+msgid "Runs on"
+msgstr "実行場所"
+
+#: src/app/screens/settings/settings_pages.cpp
+msgid "This computer"
+msgstr "このコンピューター"
+
+#: src/app/screens/settings/settings_pages.cpp
+msgid "Another computer over SSH"
+msgstr "SSH で接続する別のコンピューター"
+
+#: src/app/screens/settings/settings_pages.cpp
+msgid "SSH destination"
+msgstr "SSH の接続先"
+
+#: src/app/screens/settings/settings_pages.cpp
+msgid "user@server"
+msgstr "user@server"
+
+#: src/app/screens/settings/settings_pages.cpp
+msgid "msga on the server"
+msgstr "サーバー上の msga"
+
+#: src/app/screens/settings/settings_pages.cpp
+msgid "Optional: its path there"
+msgstr "任意: サーバー上のパス"
+
+#: src/app/screens/settings/settings_pages.cpp
+msgid "msga runs there as a relay over ssh, which must log in without a password (a key or an agent). Install the same msga version on the server."
+msgstr "msga は ssh 経由でそちらでリレーとして動きます。ssh はパスワードなし (鍵またはエージェント) でログインできる必要があります。サーバーには同じバージョンの msga をインストールしてください。"
+
+#: src/app/screens/settings/settings_pages.cpp
+msgid "Apply"
+msgstr "適用"
+
+#: src/app/screens/settings/settings_pages.cpp
+msgid "Enter the SSH destination first."
+msgstr "先に SSH の接続先を入力してください。"
+
+#: src/app/screens/settings/settings_pages.cpp
+msgid "RAM used: %1"
+msgstr "RAM使用量: %1"
+
+#: src/app/screens/settings/settings_pages.cpp
+msgid "License"
+msgstr "ライセンス"
+
+#: src/app/screens/settings/settings_pages.cpp
+msgid ""
+"MSGA — Make Slack Great Again\n"
+"Copyright © 2026 Vladimir Osipov\n"
+"\n"
+"This program is free software: you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version (GPL-3.0-or-later)."
+msgstr ""
+"MSGA — Make Slack Great Again\n"
+"Copyright © 2026 Vladimir Osipov\n"
+"\n"
+"本プログラムはフリーソフトウェアです。フリーソフトウェア財団が公開する GNU General Public License（バージョン 3、または任意でそれ以降のバージョン）の条項に基づき、再配布および改変を行うことができます（GPL-3.0-or-later）。"
+
+#: src/app/screens/settings/settings_pages.cpp
+msgid "View full license"
+msgstr "ライセンス全文を表示"
+
+#: src/app/screens/settings/settings_pages.cpp
+msgid "Contact"
+msgstr "連絡先"
+
+#: src/app/screens/settings/settings_pages.cpp
+msgid "Questions or feedback: %1"
+msgstr "ご質問・ご意見: %1"
+
+#: src/app/screens/settings/settings_pages.cpp
+msgid "Found a bug?"
+msgstr "バグを見つけましたか？"
+
+#: src/app/screens/settings/settings_pages.cpp
+msgid "Report it on GitHub so it can be tracked and fixed."
+msgstr "GitHub で報告すると、追跡・修正できます。"
+
+#: src/app/screens/settings/settings_pages.cpp
+msgid "Report a bug"
+msgstr "バグを報告"
+
+#: src/app/screens/shell/accounts.cpp
+msgid "Login failed"
+msgstr "ログインに失敗しました"
+
+#: src/app/screens/shell/accounts.cpp
+msgid "Convert to session"
+msgstr "セッションに切り替え"
+
+#: src/app/screens/shell/accounts.cpp
+msgid "Add one workspace with your Slack session first — its cookie is reused for the rest."
+msgstr "まずSlackセッションでワークスペースを1つ追加してください — そのクッキーを残りのワークスペースにも再利用します。"
+
+#: src/app/screens/shell/accounts.cpp
+msgid "All Slack workspaces already use your session."
+msgstr "すべてのSlackワークスペースはすでにセッションを使用しています。"
+
+#: src/app/screens/shell/accounts.cpp
+msgid "Couldn't convert your workspaces: %1"
+msgstr "ワークスペースを切り替えられませんでした: %1"
+
+#: src/app/screens/shell/activity_page.cpp
+msgid "Mention in %1"
+msgstr "%1でのメンション"
+
+#: src/app/screens/shell/activity_page.cpp
+msgid "Reacted %1 to your message in %2"
+msgstr "%2であなたのメッセージに%1でリアクションしました"
+
+#: src/app/screens/shell/activity_page.cpp
+msgid "Group message"
+msgstr "グループメッセージ"
+
+#: src/app/screens/shell/activity_page.cpp
+msgid "Direct message"
+msgstr "ダイレクトメッセージ"
+
+#: src/app/screens/shell/activity_page.cpp
+msgid "New messages in %1"
+msgstr "%1の新着メッセージ"
+
+#: src/app/screens/shell/activity_page.cpp src/app/screens/shell/saved_page.cpp src/app/screens/shell/scheduled_page.cpp
+msgid "No preview available"
+msgstr "プレビューはありません"
+
+#: src/app/screens/shell/activity_page.cpp
+msgid "Mark as read"
+msgstr "既読にする"
+
+#: src/app/screens/shell/activity_page.cpp
+msgid "Mark as unread"
+msgstr "未読にする"
+
+#: src/app/screens/shell/activity_page.cpp src/app/screens/shell/sidebar.cpp
+msgid "Activity"
+msgstr "アクティビティ"
+
+#: src/app/screens/shell/activity_page.cpp
+msgid "All"
+msgstr "すべて"
+
+#: src/app/screens/shell/activity_page.cpp
+msgid "DMs"
+msgstr "DM"
+
+#: src/app/screens/shell/activity_page.cpp
+msgid "Mentions"
+msgstr "メンション"
+
+#: src/app/screens/shell/activity_page.cpp
+msgid "Unread only"
+msgstr "未読のみ"
+
+#: src/app/screens/shell/activity_page.cpp
+msgid "Loading activity…"
+msgstr "アクティビティを読み込み中…"
+
+#: src/app/screens/shell/activity_page.cpp
+msgid "Couldn't load activity. Try again later."
+msgstr "アクティビティを読み込めませんでした。後でもう一度お試しください。"
+
+#: src/app/screens/shell/activity_page.cpp
+msgid "You're all caught up."
+msgstr "すべて確認済みです。"
+
+#: src/app/screens/shell/activity_page.cpp
+msgid "Mentions, replies, reactions and direct messages will appear here."
+msgstr "メンション、返信、リアクション、ダイレクトメッセージがここに表示されます。"
+
+#: src/app/screens/shell/canvas_page.cpp
+msgid "Your canvas title"
+msgstr "canvasのタイトル"
+
+#: src/app/screens/shell/canvas_page.cpp
+msgid "Go ahead, start writing!"
+msgstr "さあ、書き始めましょう！"
+
+#: src/app/screens/shell/canvas_page.cpp
+msgid "Could not create canvas: %1"
+msgstr "canvasを作成できませんでした: %1"
+
+#: src/app/screens/shell/canvas_page.cpp
+msgid "Canvas edit failed: %1"
+msgstr "canvasの編集に失敗しました: %1"
+
+#: src/app/screens/shell/canvas_page.cpp
+msgid "This canvas was created with Slack's built-in editor and is not editable through the Slack API — it is read-only here."
+msgstr "このキャンバスは Slack の組み込みエディタで作成されており、Slack API 経由では編集できません。ここでは読み取り専用です。"
+
+#: src/app/screens/shell/canvas_page.cpp
+msgid "You don't have access to this canvas."
+msgstr "このキャンバスにアクセスする権限がありません。"
+
+#: src/app/screens/shell/canvas_page.cpp
+msgid "Delete canvas"
+msgstr "canvasを削除"
+
+#: src/app/screens/shell/canvas_page.cpp
+msgid ""
+"The canvas will be deleted for everyone in the conversation.\n"
+"This action cannot be undone."
+msgstr ""
+"canvasはこの会話の全員に対して削除されます。\n"
+"この操作は元に戻せません。"
+
+#: src/app/screens/shell/canvas_page.cpp
+msgid "Canvas deletion failed: %1"
+msgstr "canvasの削除に失敗しました: %1"
+
+#: src/app/screens/shell/channel_dialogs.cpp
+msgid "New group DM"
+msgstr "グループDMを作成"
+
+#: src/app/screens/shell/channel_dialogs.cpp
+msgid "Search for people"
+msgstr "メンバーを検索"
+
+#: src/app/screens/shell/channel_dialogs.cpp src/app/screens/shell/profile_card.cpp src/app/screens/shell/saved_page.cpp
+msgid "Message"
+msgstr "メッセージ"
+
+#: src/app/screens/shell/channel_dialogs.cpp
+msgid "%n person"
+msgid_plural "%n people"
+msgstr[0] "%n人"
+
+#: src/app/screens/shell/channel_dialogs.cpp
+msgid "Search for channels"
+msgstr "チャンネルを検索"
+
+#: src/app/screens/shell/channel_dialogs.cpp
+msgid "Create Channel"
+msgstr "チャンネルを作成"
+
+#: src/app/screens/shell/channel_dialogs.cpp src/app/screens/shell/sidebar.cpp
+msgid "Channels"
+msgstr "チャンネル"
+
+#: src/app/screens/shell/channel_dialogs.cpp
+msgid "People"
+msgstr "メンバー"
+
+#: src/app/screens/shell/channel_dialogs.cpp src/app/screens/shell/sidebar.cpp
+msgid "Create a channel"
+msgstr "チャンネルを作成"
+
+#: src/app/screens/shell/channel_dialogs.cpp
+msgid "e.g. plan-budget"
+msgstr "例: plan-budget"
+
+#: src/app/screens/shell/channel_dialogs.cpp
+msgid "Channels are where conversations happen around a topic. Use a name that is easy to find and understand."
+msgstr "チャンネルはトピックごとに会話が行われる場所です。見つけやすく、わかりやすい名前を付けましょう。"
+
+#: src/app/screens/shell/channel_dialogs.cpp
+msgid "Next"
+msgstr "次へ"
+
+#: src/app/screens/shell/channel_dialogs.cpp
+msgid "Visibility"
+msgstr "公開範囲"
+
+#: src/app/screens/shell/channel_dialogs.cpp
+msgid "Private — only specific people"
+msgstr "プライベート — 特定のメンバーのみ"
+
+#: src/app/screens/shell/channel_dialogs.cpp
+msgid "Can only be viewed or joined by invitation"
+msgstr "招待されたメンバーのみ閲覧・参加できます"
+
+#: src/app/screens/shell/channel_dialogs.cpp
+msgid "Step 2 of 2"
+msgstr "ステップ 2/2"
+
+#: src/app/screens/shell/channel_dialogs.cpp
+msgid "Back"
+msgstr "戻る"
+
+#: src/app/screens/shell/channel_dialogs.cpp src/app/screens/shell/shell_dialogs.cpp
+msgid "Create"
+msgstr "作成"
+
+#: src/app/screens/shell/channel_dialogs.cpp
+msgid "Public — anyone in %1"
+msgstr "パブリック — %1の全員"
+
+#: src/app/screens/shell/channel_dialogs.cpp
+msgid "this workspace"
+msgstr "このワークスペース"
+
+#: src/app/screens/shell/channel_dialogs.cpp
+msgid "%1 %2"
+msgstr "%1%2"
+
+#: src/app/screens/shell/channel_dialogs.cpp
+msgid "member"
+msgstr "人のメンバー"
+
+#: src/app/screens/shell/channel_dialogs.cpp
+msgid "members"
+msgstr "人のメンバー"
+
+#: src/app/screens/shell/channel_dialogs.cpp
+msgid "Joined"
+msgstr "参加済み"
+
+#: src/app/screens/shell/composer.cpp
+msgid "Message sent"
+msgstr "メッセージを送信しました"
+
+#: src/app/screens/shell/composer.cpp
+msgid "Undo"
+msgstr "取り消す"
+
+#: src/app/screens/shell/composer.cpp
+msgid "Send a message"
+msgstr "メッセージを送信"
+
+#: src/app/screens/shell/composer.cpp src/app/screens/shell/shortcuts.cpp
+msgid "Bold"
+msgstr "太字"
+
+#: src/app/screens/shell/composer.cpp src/app/screens/shell/shortcuts.cpp
+msgid "Italic"
+msgstr "斜体"
+
+#: src/app/screens/shell/composer.cpp src/app/screens/shell/shortcuts.cpp
+msgid "Underline"
+msgstr "下線"
+
+#: src/app/screens/shell/composer.cpp src/app/screens/shell/shortcuts.cpp
+msgid "Strikethrough"
+msgstr "取り消し線"
+
+#: src/app/screens/shell/composer.cpp
+msgid "Link"
+msgstr "リンク"
+
+#: src/app/screens/shell/composer.cpp src/app/screens/shell/shortcuts.cpp
+msgid "Ordered list"
+msgstr "番号付きリスト"
+
+#: src/app/screens/shell/composer.cpp
+msgid "Bullet list"
+msgstr "箇条書きリスト"
+
+#: src/app/screens/shell/composer.cpp src/app/screens/shell/shortcuts.cpp
+msgid "Blockquote"
+msgstr "引用"
+
+#: src/app/screens/shell/composer.cpp src/app/screens/shell/shortcuts.cpp
+msgid "Inline code"
+msgstr "インラインコード"
+
+#: src/app/screens/shell/composer.cpp src/app/screens/shell/shortcuts.cpp
+msgid "Code block"
+msgstr "コードブロック"
+
+#: src/app/screens/shell/composer.cpp
+msgid "Editing message"
+msgstr "メッセージを編集中"
+
+#: src/app/screens/shell/composer.cpp src/app/screens/shell/shortcuts.cpp
+msgid "Attach file"
+msgstr "ファイルを添付"
+
+#: src/app/screens/shell/composer.cpp
+msgid "Emoji"
+msgstr "絵文字"
+
+#: src/app/screens/shell/composer.cpp src/app/screens/shell/composer_popups.cpp
+msgid "Search GIFs"
+msgstr "GIFを検索"
+
+#: src/app/screens/shell/composer.cpp
+msgid "Mention"
+msgstr "メンション"
+
+#: src/app/screens/shell/composer.cpp
+msgid "Schedule send"
+msgstr "送信を予約"
+
+#: src/app/screens/shell/composer.cpp src/app/screens/shell/shortcuts.cpp
+msgid "Send message"
+msgstr "メッセージを送信"
+
+#: src/app/screens/shell/composer.cpp
+msgid "Search GIFs — needs a GIPHY API key"
+msgstr "GIFを検索 — GIPHYのAPIキーが必要です"
+
+#: src/app/screens/shell/composer.cpp
+msgid "Stop and transcribe"
+msgstr "停止して文字起こし"
+
+#: src/app/screens/shell/composer.cpp src/app/screens/shell/shell_agents.cpp
+msgid "Message %1"
+msgstr "%1へのメッセージ"
+
+#: src/app/screens/shell/composer.cpp src/app/screens/shell/shell.cpp src/app/screens/shell/workflow_form.cpp
+msgid "Workflow"
+msgstr "ワークフロー"
+
+#: src/app/screens/shell/composer.cpp src/app/screens/shell/threads_page.cpp
+msgid "Reply in thread…"
+msgstr "スレッドに返信…"
+
+#: src/app/screens/shell/composer.cpp
+msgid "Remove attachment"
+msgstr "添付ファイルを削除"
+
+#: src/app/screens/shell/composer.cpp
+msgid "No spelling suggestions"
+msgstr "スペルの候補がありません"
+
+#: src/app/screens/shell/composer.cpp
+msgid "Add to dictionary"
+msgstr "辞書に追加"
+
+#: src/app/screens/shell/composer.cpp
+msgid "Ignore"
+msgstr "無視"
+
+#: src/app/screens/shell/composer.cpp
+msgid "Files can't be scheduled. Send them now or remove them first."
+msgstr "ファイルは予約送信できません。今すぐ送信するか、先に削除してください。"
+
+#: src/app/screens/shell/composer.cpp
+msgid "GIF · %1"
+msgstr "GIF · %1"
+
+#: src/app/screens/shell/composer.cpp
+msgid "Notify everyone in this channel"
+msgstr "このチャンネルの全員に通知します"
+
+#: src/app/screens/shell/composer.cpp
+msgid "Notify everyone in your workspace"
+msgstr "ワークスペースの全員に通知します"
+
+#: src/app/screens/shell/composer.cpp
+msgid "Notify every online member here"
+msgstr "ここにいるオンラインの全メンバーに通知します"
+
+#: src/app/screens/shell/composer.cpp
+msgid "Disabled in threads"
+msgstr "スレッドでは無効"
+
+#: src/app/screens/shell/composer.cpp
+msgid "(you)"
+msgstr "(あなた)"
+
+#: src/app/screens/shell/composer_popups.cpp
+msgid "Enter"
+msgstr "Enter"
+
+#: src/app/screens/shell/composer_popups.cpp
+msgid "URL"
+msgstr "URL"
+
+#: src/app/screens/shell/composer_popups.cpp
+msgid "Display text"
+msgstr "表示テキスト"
+
+#: src/app/screens/shell/composer_popups.cpp
+msgid "Insert"
+msgstr "挿入"
+
+#: src/app/screens/shell/composer_popups.cpp
+msgid "Unlink"
+msgstr "リンクを解除"
+
+#: src/app/screens/shell/composer_popups.cpp
+msgid "Send at"
+msgstr "送信日時"
+
+#: src/app/screens/shell/composer_popups.cpp
+msgid "Schedule"
+msgstr "予約"
+
+#: src/app/screens/shell/composer_popups.cpp
+msgid ""
+"Searching GIFs needs a GIPHY API key.\n"
+"\n"
+"Create a free one — it takes a minute — then paste it below. You can change it later in Settings → System."
+msgstr ""
+"GIFの検索にはGIPHYのAPIキーが必要です。\n"
+"\n"
+"無料で取得できます — 1分ほどで済みます — 取得したら下に貼り付けてください。後から設定 → システムで変更できます。"
+
+#: src/app/screens/shell/composer_popups.cpp
+msgid "Get a free GIPHY key…"
+msgstr "無料のGIPHYキーを取得…"
+
+#: src/app/screens/shell/composer_popups.cpp
+msgid "No GIFs found."
+msgstr "GIFが見つかりませんでした。"
+
+#: src/app/screens/shell/composer_popups.cpp
+msgid "Paste a key first."
+msgstr "先にキーを貼り付けてください。"
+
+#: src/app/screens/shell/composer_popups.cpp
+msgid "No earlier prompt matches"
+msgstr "一致する以前のプロンプトはありません"
+
+#: src/app/screens/shell/composer_popups.cpp src/app/screens/shell/shortcuts.cpp
+msgid "Search earlier prompts"
+msgstr "以前のプロンプトを検索"
+
+#: src/app/screens/shell/context_menus.cpp
+msgid "Star channel"
+msgstr "チャンネルにスターを付ける"
+
+#: src/app/screens/shell/context_menus.cpp src/app/screens/shell/header.cpp
+msgid "Star conversation"
+msgstr "会話にスターを付ける"
+
+#: src/app/screens/shell/context_menus.cpp
+msgid "Unstar channel"
+msgstr "チャンネルのスターを外す"
+
+#: src/app/screens/shell/context_menus.cpp src/app/screens/shell/header.cpp
+msgid "Unstar conversation"
+msgstr "会話のスターを外す"
+
+#: src/app/screens/shell/context_menus.cpp
+msgid "All new posts"
+msgstr "すべての新着投稿"
+
+#: src/app/screens/shell/context_menus.cpp
+msgid "Just mentions"
+msgstr "メンションのみ"
+
+#: src/app/screens/shell/context_menus.cpp
+msgid "Mute and hide"
+msgstr "ミュートして非表示"
+
+#: src/app/screens/shell/context_menus.cpp
+msgid "Mute"
+msgstr "ミュート"
+
+#: src/app/screens/shell/context_menus.cpp
+msgid "Unmute"
+msgstr "ミュート解除"
+
+#: src/app/screens/shell/context_menus.cpp
+msgid "Name conversation…"
+msgstr "会話に名前を付ける…"
+
+#: src/app/screens/shell/context_menus.cpp
+msgid "Leave channel"
+msgstr "チャンネルから退出"
+
+#: src/app/screens/shell/context_menus.cpp
+msgid "Leave conversation"
+msgstr "会話から退出"
+
+#: src/app/screens/shell/context_menus.cpp src/app/screens/shell/header_jobs.cpp
+msgid "Stop"
+msgstr "停止"
+
+#: src/app/screens/shell/context_menus.cpp
+msgid "New section…"
+msgstr "新しいセクション…"
+
+#: src/app/screens/shell/context_menus.cpp
+msgid "Remove from %1"
+msgstr "%1 から外す"
+
+#: src/app/screens/shell/context_menus.cpp
+msgid "Workspace admin"
+msgstr "ワークスペース管理"
+
+#: src/app/screens/shell/context_menus.cpp
+msgid "Log out"
+msgstr "ログアウト"
+
+#: src/app/screens/shell/context_menus.cpp
+msgid "Find a session"
+msgstr "セッションを探す"
+
+#: src/app/screens/shell/context_menus.cpp src/app/screens/shell/session_dialogs.cpp
+msgid "Create a session"
+msgstr "セッションを作成"
+
+#: src/app/screens/shell/context_menus.cpp
+msgid "Create an unsafe session"
+msgstr "安全でないセッションを作成"
+
+#: src/app/screens/shell/context_menus.cpp src/app/screens/shell/teammate_page.cpp
+msgid "Edit teammate…"
+msgstr "チームメイトを編集…"
+
+#: src/app/screens/shell/context_menus.cpp src/app/screens/shell/session_dialogs.cpp
+msgid "Restore default"
+msgstr "デフォルトに戻す"
+
+#: src/app/screens/shell/context_menus.cpp
+msgid "Remove teammate…"
+msgstr "チームメイトを外す…"
+
+#: src/app/screens/shell/context_menus.cpp
+msgid "Create a section…"
+msgstr "セクションを作成…"
+
+#: src/app/screens/shell/context_menus.cpp
+msgid "Rename section…"
+msgstr "セクション名を変更…"
+
+#: src/app/screens/shell/context_menus.cpp
+msgid "Delete section…"
+msgstr "セクションを削除…"
+
+#: src/app/screens/shell/context_menus.cpp
+msgid "Move section up"
+msgstr "セクションを上へ移動"
+
+#: src/app/screens/shell/context_menus.cpp
+msgid "Move section down"
+msgstr "セクションを下へ移動"
+
+#: src/app/screens/shell/context_menus.cpp
+msgid "Default"
+msgstr "デフォルト"
+
+#: src/app/screens/shell/context_menus.cpp
+msgid "Alphabetically"
+msgstr "アルファベット順"
+
+#: src/app/screens/shell/context_menus.cpp
+msgid "By most recent"
+msgstr "新しい順"
+
+#: src/app/screens/shell/context_menus.cpp
+msgid "Unreads on top"
+msgstr "未読を上に表示"
+
+#: src/app/screens/shell/context_menus.cpp
+msgid "Mentions on top"
+msgstr "メンションを上に表示"
+
+#: src/app/screens/shell/context_menus.cpp
+msgid "Notify you about…"
+msgstr "通知対象…"
+
+#: src/app/screens/shell/context_menus.cpp
+msgid "Move to section"
+msgstr "セクションに移動"
+
+#: src/app/screens/shell/context_menus.cpp
+msgid "Rename conversation…"
+msgstr "会話の名前を変更…"
+
+#: src/app/screens/shell/context_menus.cpp
+msgid "Rename session…"
+msgstr "セッション名を変更…"
+
+#: src/app/screens/shell/context_menus.cpp
+msgid "Remove from msga"
+msgstr "msgaから削除"
+
+#: src/app/screens/shell/context_menus.cpp
+msgid "Log out from %1"
+msgstr "%1からログアウト"
+
+#: src/app/screens/shell/context_menus.cpp
+msgid "Sort"
+msgstr "並べ替え"
+
+#: src/app/screens/shell/files_page.cpp
+msgid "Couldn't load the files."
+msgstr "ファイルを読み込めませんでした。"
+
+#: src/app/screens/shell/files_page.cpp
+msgid "No files have been shared here yet."
+msgstr "ここではまだファイルが共有されていません。"
+
+#: src/app/screens/shell/gif_search.cpp
+msgid "GIPHY rate limit reached. Try again shortly."
+msgstr "GIPHYのレート制限に達しました。しばらくしてからもう一度お試しください。"
+
+#: src/app/screens/shell/gif_search.cpp
+msgid "GIPHY request failed (HTTP %1)."
+msgstr "GIPHYへのリクエストが失敗しました（HTTP %1）。"
+
+#: src/app/screens/shell/gif_search.cpp
+msgid "Could not reach GIPHY — check your connection."
+msgstr "GIPHYに接続できませんでした — ネットワーク接続を確認してください。"
+
+#: src/app/screens/shell/gif_search.cpp
+msgid "No GIPHY API key configured."
+msgstr "GIPHYのAPIキーが設定されていません。"
+
+#: src/app/screens/shell/gif_search.cpp
+msgid "GIPHY rejected this API key."
+msgstr "GIPHYがこのAPIキーを拒否しました。"
+
+#: src/app/screens/shell/header.cpp
+msgid "View members"
+msgstr "メンバーを表示"
+
+#: src/app/screens/shell/header.cpp
+msgid "Members"
+msgstr "メンバー"
+
+#: src/app/screens/shell/header.cpp
+msgid "Find members"
+msgstr "メンバーを検索"
+
+#: src/app/screens/shell/header.cpp
+msgid "Loading members…"
+msgstr "メンバーを読み込み中…"
+
+#: src/app/screens/shell/header.cpp
+msgid "%1 (you)"
+msgstr "%1（あなた）"
+
+#: src/app/screens/shell/header.cpp
+msgid "%n member"
+msgid_plural "%n members"
+msgstr[0] "%n人のメンバー"
+
+#: src/app/screens/shell/header.cpp
+msgid "Couldn't load the members (%1)."
+msgstr "メンバーを読み込めませんでした（%1）。"
+
+#: src/app/screens/shell/header.cpp
+msgid "No members to show."
+msgstr "表示するメンバーがいません。"
+
+#: src/app/screens/shell/header.cpp
+msgid "No one here matches “%1”."
+msgstr "「%1」に一致するメンバーはいません。"
+
+#: src/app/screens/shell/header.cpp src/app/screens/shell/huddle_banner.cpp
+msgid "Opens the huddle in Slack for web"
+msgstr "Slack（ブラウザ版）でハドルを開きます"
+
+#: src/app/screens/shell/header.cpp src/app/screens/shell/message_search.cpp src/app/screens/shell/shortcuts.cpp
+msgid "Search messages"
+msgstr "メッセージを検索"
+
+#: src/app/screens/shell/header.cpp
+msgid "You appear away to others — no official Slack client is connected"
+msgstr "公式Slackクライアントが接続されていないため、他のメンバーには離席中と表示されます"
+
+#: src/app/screens/shell/header.cpp
+msgid "Active"
+msgstr "アクティブ"
+
+#: src/app/screens/shell/header.cpp
+msgid "Away"
+msgstr "離席中"
+
+#: src/app/screens/shell/header.cpp
+msgid "Messages"
+msgstr "メッセージ"
+
+#: src/app/screens/shell/header.cpp
+msgid "Add canvas"
+msgstr "canvasを追加"
+
+#: src/app/screens/shell/header.cpp
+msgid "Files"
+msgstr "ファイル"
+
+#: src/app/screens/shell/header.cpp
+msgid "Bookmarks"
+msgstr "ブックマーク"
+
+#: src/app/screens/shell/header.cpp
+msgid "Workflows"
+msgstr "ワークフロー"
+
+#: src/app/screens/shell/header.cpp
+msgid "Untitled"
+msgstr "無題"
+
+#: src/app/screens/shell/header_jobs.cpp src/app/screens/shell/typing_indicator.cpp
+msgid "%1s"
+msgstr "%1秒"
+
+#: src/app/screens/shell/header_jobs.cpp
+msgid "Background jobs"
+msgstr "バックグラウンドジョブ"
+
+#: src/app/screens/shell/header_jobs.cpp
+msgid "%n running"
+msgid_plural "%n running"
+msgstr[0] "%n件実行中"
+
+#: src/app/screens/shell/header_jobs.cpp
+msgid "%n failed"
+msgid_plural "%n failed"
+msgstr[0] "%n件失敗"
+
+#: src/app/screens/shell/header_jobs.cpp
+msgid "%n done"
+msgid_plural "%n done"
+msgstr[0] "%n件完了"
+
+#: src/app/screens/shell/header_jobs.cpp
+msgid "Stop background job"
+msgstr "バックグラウンドジョブを停止"
+
+#: src/app/screens/shell/header_jobs.cpp
+msgid ""
+"Stop “%1”? The session is told that it was stopped.\n"
+"A job that writes files (a build, a migration) may leave them half-done."
+msgstr ""
+"「%1」を停止しますか？停止したことはセッションに伝えられます。\n"
+"ファイルを書き込むジョブ（ビルド、マイグレーションなど）は途中の状態のまま残ることがあります。"
+
+#: src/app/screens/shell/header_jobs.cpp
+msgid "Stop job"
+msgstr "ジョブを停止"
+
+#: src/app/screens/shell/header_jobs.cpp
+msgid "done · %1"
+msgstr "完了 · %1"
+
+#: src/app/screens/shell/header_jobs.cpp
+msgid "failed · exit code %1"
+msgstr "失敗 · 終了コード %1"
+
+#: src/app/screens/shell/header_jobs.cpp
+msgid "stopped"
+msgstr "停止"
+
+#: src/app/screens/shell/header_jobs.cpp
+msgid "Stop this background job"
+msgstr "このバックグラウンドジョブを停止"
+
+#: src/app/screens/shell/header_jobs.cpp
+msgid "Reported by %1"
+msgstr "%1による報告"
+
+#: src/app/screens/shell/header_jobs.cpp
+msgid "done"
+msgstr "完了"
+
+#: src/app/screens/shell/header_jobs.cpp
+msgid "failed"
+msgstr "失敗"
+
+#: src/app/screens/shell/header_jobs.cpp
+msgid "running"
+msgstr "実行中"
+
+#: src/app/screens/shell/header_jobs.cpp
+msgid "done in %1"
+msgstr "%1で完了"
+
+#: src/app/screens/shell/header_jobs.cpp
+msgid "failed, exit code %1"
+msgstr "失敗、終了コード %1"
+
+#: src/app/screens/shell/header_jobs.cpp
+msgid "%n background job"
+msgid_plural "%n background jobs"
+msgstr[0] "%n件のバックグラウンドジョブ"
+
+#: src/app/screens/shell/header_jobs.cpp
+msgid "%n more background job"
+msgid_plural "%n more background jobs"
+msgstr[0] "他%n件のバックグラウンドジョブ"
+
+#: src/app/screens/shell/huddle_banner.cpp
+msgid "A huddle is happening"
+msgstr "ハドルが開催中です"
+
+#: src/app/screens/shell/message_search.cpp
+msgid "Unknown channel"
+msgstr "不明なチャンネル"
+
+#: src/app/screens/shell/message_search.cpp
+msgid "Search messages…"
+msgstr "メッセージを検索…"
+
+#: src/app/screens/shell/message_search.cpp
+msgid "Close search"
+msgstr "検索を閉じる"
+
+#: src/app/screens/shell/message_search.cpp
+msgid "No results found."
+msgstr "結果が見つかりませんでした。"
+
+#: src/app/screens/shell/profile_card.cpp
+msgid "Workspace Owner"
+msgstr "ワークスペースのオーナー"
+
+#: src/app/screens/shell/profile_card.cpp
+msgid "Workspace Admin"
+msgstr "ワークスペースの管理者"
+
+#: src/app/screens/shell/profile_card.cpp src/app/slack/slack_backend.cpp
+msgid "App"
+msgstr "アプリ"
+
+#: src/app/screens/shell/profile_card.cpp
+msgid "%1 local time"
+msgstr "現地時間 %1"
+
+#: src/app/screens/shell/quick_switcher.cpp
+msgid "Jump to a conversation…"
+msgstr "会話にジャンプ…"
+
+#: src/app/screens/shell/quick_switcher.cpp
+msgid "No conversations match."
+msgstr "一致する会話がありません。"
+
+#: src/app/screens/shell/quick_switcher.cpp
+msgid "%1 to move · %2 to switch workspace · %3 to open"
+msgstr "%1 で移動 · %2 でワークスペースを切り替え · %3 で開く"
+
+#: src/app/screens/shell/quick_switcher.cpp
+msgid "%1 to move · %2 to open"
+msgstr "%1 で移動 · %2 で開く"
+
+#: src/app/screens/shell/quick_switcher.cpp
+msgid "No matches in %1. Other workspaces have some."
+msgstr "%1 には一致する会話がありません。他のワークスペースにはあります。"
+
+#: src/app/screens/shell/saved_page.cpp
+msgid "Reminder set for %1"
+msgstr "リマインダー: %1"
+
+#: src/app/screens/shell/saved_page.cpp src/app/screens/shell/sidebar.cpp
+msgid "Saved messages"
+msgstr "保存済みメッセージ"
+
+#: src/app/screens/shell/saved_page.cpp
+msgid "Messages you save for later or set reminders on will appear here."
+msgstr "後で見るために保存したメッセージやリマインダーを設定したメッセージがここに表示されます。"
+
+#: src/app/screens/shell/scheduled_page.cpp
+msgid "Sends %1"
+msgstr "%1 に送信"
+
+#: src/app/screens/shell/scheduled_page.cpp
+msgid "in a thread"
+msgstr "スレッド内"
+
+#: src/app/screens/shell/scheduled_page.cpp
+msgid "Send now"
+msgstr "今すぐ送信"
+
+#: src/app/screens/shell/scheduled_page.cpp src/app/screens/shell/sidebar.cpp
+msgid "Scheduled messages"
+msgstr "予約済みメッセージ"
+
+#: src/app/screens/shell/scheduled_page.cpp
+msgid "Messages you schedule will appear here until they're sent."
+msgstr "予約したメッセージは送信されるまでここに表示されます。"
+
+#: src/app/screens/shell/session_dialogs.cpp
+msgid "Search for sessions"
+msgstr "セッションを検索"
+
+#: src/app/screens/shell/session_dialogs.cpp
+msgid "Looking for sessions…"
+msgstr "セッションを探しています…"
+
+#: src/app/screens/shell/session_dialogs.cpp
+msgid "There are no sessions yet."
+msgstr "セッションはまだありません。"
+
+#: src/app/screens/shell/session_dialogs.cpp
+msgid "No sessions match."
+msgstr "一致するセッションはありません。"
+
+#: src/app/screens/shell/session_dialogs.cpp
+msgid "Add a teammate"
+msgstr "チームメイトを追加"
+
+#: src/app/screens/shell/session_dialogs.cpp
+msgid "Edit teammate"
+msgstr "チームメイトを編集"
+
+#: src/app/screens/shell/session_dialogs.cpp
+msgid "Copywriter"
+msgstr "コピーライター"
+
+#: src/app/screens/shell/session_dialogs.cpp
+msgid "Description"
+msgstr "説明"
+
+#: src/app/screens/shell/session_dialogs.cpp
+msgid "Writes clear, friendly product copy."
+msgstr "わかりやすく親しみやすい製品コピーを書きます。"
+
+#: src/app/screens/shell/session_dialogs.cpp
+msgid "Picture"
+msgstr "画像"
+
+#: src/app/screens/shell/session_dialogs.cpp
+msgid "Instructions"
+msgstr "指示"
+
+#: src/app/screens/shell/session_dialogs.cpp
+msgid "You are the team's copywriter. You write short, friendly copy in the product's voice…"
+msgstr "あなたはチームのコピーライターです。製品の語り口で、短く親しみやすいコピーを書きます…"
+
+#: src/app/screens/shell/session_dialogs.cpp
+msgid "Added to Claude Code's own instructions: what the teammate focuses on, how it works, what to avoid."
+msgstr "Claude Code 自身の指示に追加されます：このチームメイトが注力すること、進め方、避けること。"
+
+#: src/app/screens/shell/session_dialogs.cpp
+msgid "Sessions already started keep the instructions they began with; new sessions get these."
+msgstr "すでに始まったセッションは開始時の指示のままで、新しいセッションにこの指示が使われます。"
+
+#: src/app/screens/shell/session_dialogs.cpp src/app/screens/shell/sidebar.cpp
+msgid "Add teammate"
+msgstr "チームメイトを追加"
+
+#: src/app/screens/shell/session_dialogs.cpp
+msgid "In the list"
+msgstr "リストにあり"
+
+#: src/app/screens/shell/session_dialogs.cpp
+msgid "Remove teammate"
+msgstr "チームメイトを外す"
+
+#: src/app/screens/shell/session_dialogs.cpp
+msgid "Remove the %1 from the team? Its sessions stay in the list, with its name and picture."
+msgstr "%1 をチームから外しますか？セッションは名前と画像ごとリストに残ります。"
+
+#: src/app/screens/shell/session_status_dialog.cpp
+msgid "Session status"
+msgstr "セッションの状態"
+
+#: src/app/screens/shell/shell.cpp
+msgid "Keyboard shortcuts"
+msgstr "キーボードショートカット"
+
+#: src/app/screens/shell/shell.cpp
+msgid "Log in to workspace"
+msgstr "ワークスペースにログイン"
+
+#: src/app/screens/shell/shell.cpp
+msgid "msga"
+msgstr "msga"
+
+#: src/app/screens/shell/shell.cpp
+msgid "Pin window on top"
+msgstr "ウィンドウを最前面に固定"
+
+#: src/app/screens/shell/shell.cpp
+msgid "Minimize"
+msgstr "最小化"
+
+#: src/app/screens/shell/shell.cpp
+msgid "Maximize"
+msgstr "最大化"
+
+#: src/app/screens/shell/shell.cpp
+msgid "Unpin window"
+msgstr "ウィンドウの固定を解除"
+
+#: src/app/screens/shell/shell.cpp src/app/screens/shell/signin_dialogs.cpp
+msgid "Add workspace"
+msgstr "ワークスペースを追加"
+
+#: src/app/screens/shell/shell.cpp
+msgid "The same app keys are running on another device and keep interrupting your Slack connection."
+msgstr "同じアプリキーが別のデバイスで使用されており、Slack接続が繰り返し中断されています。"
+
+#: src/app/screens/shell/shell.cpp
+msgid "How to solve this?"
+msgstr "解決方法は？"
+
+#: src/app/screens/shell/shell.cpp
+msgid "Submitting notification to macOS…"
+msgstr "macOS に通知を送信しています…"
+
+#: src/app/screens/shell/shell.cpp
+msgid "Accepted by macOS. If no banner appears, check Focus and notification settings."
+msgstr "macOS に受け付けられました。バナーが表示されない場合は、集中モードと通知の設定を確認してください。"
+
+#: src/app/screens/shell/shell.cpp
+msgid "The macOS notification service is unavailable."
+msgstr "macOS の通知サービスを利用できません。"
+
+#: src/app/screens/shell/shell.cpp
+msgid "Session expired"
+msgstr "セッションの期限が切れました"
+
+#: src/app/screens/shell/shell.cpp
+msgid "Your session has expired. Click to sign in again."
+msgstr "セッションの期限が切れました。クリックして再度サインインしてください。"
+
+#: src/app/screens/shell/shell.cpp
+msgid "Your %1 session has expired. Click to sign in again."
+msgstr "%1 のセッションの期限が切れました。クリックして再度サインインしてください。"
+
+#: src/app/screens/shell/shell.cpp
+msgid "Featured"
+msgstr "おすすめ"
+
+#: src/app/screens/shell/shell.cpp
+msgid "Bookmarked"
+msgstr "ブックマーク済み"
+
+#: src/app/screens/shell/shell.cpp
+msgid "The workflow couldn't start: Slack didn't answer. Try again."
+msgstr "ワークフローを開始できませんでした：Slack から応答がありません。もう一度お試しください。"
+
+#: src/app/screens/shell/shell.cpp
+msgid "The workflow couldn't start (%1)."
+msgstr "ワークフローを開始できませんでした（%1）。"
+
+#: src/app/screens/shell/shell.cpp
+msgid "Reset window size"
+msgstr "ウィンドウサイズをリセット"
+
+#: src/app/screens/shell/shell.cpp
+msgid "Quit"
+msgstr "終了"
+
+#: src/app/screens/shell/shell.cpp
+msgid "Notification status: %1"
+msgstr "通知の状態: %1"
+
+#: src/app/screens/shell/shell_agents.cpp
+msgid "That session is gone: Claude Code no longer has it."
+msgstr "このセッションはもうありません。Claude Code から削除されています。"
+
+#: src/app/screens/shell/shell_agents.cpp
+msgid "Start session in a directory without permission checks…"
+msgstr "権限の確認なしでフォルダーでセッションを開始…"
+
+#: src/app/screens/shell/shell_agents.cpp
+msgid "Start session in a directory…"
+msgstr "フォルダーでセッションを開始…"
+
+#: src/app/screens/shell/shell_dialogs.cpp
+msgid "Search channels and people…"
+msgstr "チャンネルやメンバーを検索…"
+
+#: src/app/screens/shell/shell_dialogs.cpp
+msgid "%1 wrote:"
+msgstr "%1 が書き込みました:"
+
+#: src/app/screens/shell/shell_dialogs.cpp
+msgid "%1 wrote in #%2:"
+msgstr "%1 が #%2 に書き込みました:"
+
+#: src/app/screens/shell/shell_dialogs.cpp
+msgid "Forward this message"
+msgstr "このメッセージを転送"
+
+#: src/app/screens/shell/shell_dialogs.cpp
+msgid "Forward this file"
+msgstr "このファイルを転送"
+
+#: src/app/screens/shell/shell_dialogs.cpp
+msgid "Add a message, if you'd like."
+msgstr "必要に応じてメッセージを追加できます。"
+
+#: src/app/screens/shell/shell_dialogs.cpp
+msgid "Couldn't open the chat."
+msgstr "チャットを開けませんでした。"
+
+#: src/app/screens/shell/shell_dialogs.cpp
+msgid "Forwarding %1"
+msgstr "%1 を転送中"
+
+#: src/app/screens/shell/shell_dialogs.cpp
+msgid "Forwarding %n files"
+msgid_plural "Forwarding %n files"
+msgstr[0] "%n 個のファイルを転送中"
+
+#: src/app/screens/shell/shell_dialogs.cpp
+msgid "Couldn't forward the file."
+msgstr "ファイルを転送できませんでした。"
+
+#: src/app/screens/shell/shell_dialogs.cpp
+msgid "Choose image…"
+msgstr "画像を選択…"
+
+#: src/app/screens/shell/shell_dialogs.cpp
+msgid "Use default"
+msgstr "既定に戻す"
+
+#: src/app/screens/shell/shell_dialogs.cpp
+msgid "That file could not be read as an image."
+msgstr "そのファイルは画像として読み込めませんでした。"
+
+#: src/app/screens/shell/shell_dialogs.cpp src/app/screens/shell/status_dialog.cpp
+msgid "Images"
+msgstr "画像"
+
+#: src/app/screens/shell/shell_dialogs.cpp
+msgid "The icon could not be saved."
+msgstr "アイコンを保存できませんでした。"
+
+#: src/app/screens/shell/shell_dialogs.cpp
+msgid "Only you see this icon. The picture is cropped to a square. You can also drop an image file onto this window."
+msgstr "このアイコンは自分にだけ表示されます。画像は正方形に切り抜かれます。画像ファイルをこのウィンドウにドロップすることもできます。"
+
+#: src/app/screens/shell/shell_dialogs.cpp
+msgid "Workspace icon"
+msgstr "ワークスペースのアイコン"
+
+#: src/app/screens/shell/shell_dialogs.cpp
+msgid "Choose workspace icon"
+msgstr "ワークスペースのアイコンを選択"
+
+#: src/app/screens/shell/shell_dialogs.cpp
+msgid "Choose tray icon"
+msgstr "トレイアイコンを選択"
+
+#: src/app/screens/shell/shell_dialogs.cpp
+msgid "Convert to monochrome"
+msgstr "モノクロに変換"
+
+#: src/app/screens/shell/shell_dialogs.cpp
+msgid "The picture is fitted into a square, and the unread dot is drawn over its corner. You can also drop an image file onto this window."
+msgstr "画像は正方形に収まるよう縮小され、未読の点がその角に重ねて表示されます。画像ファイルをこのウィンドウにドロップすることもできます。"
+
+#: src/app/screens/shell/shell_dialogs.cpp
+msgid "Rename session"
+msgstr "セッション名を変更"
+
+#: src/app/screens/shell/shell_dialogs.cpp
+msgid "Name conversation"
+msgstr "会話に名前を付ける"
+
+#: src/app/screens/shell/shell_dialogs.cpp
+msgid "Only msga shows this name; Claude Code keeps its own. Leave it empty to use Claude Code's name again."
+msgstr "この名前はmsgaにだけ表示され、Claude Codeは独自の名前を保持します。空欄にするとClaude Codeの名前に戻ります。"
+
+#: src/app/screens/shell/shell_dialogs.cpp
+msgid "Only you see this name. Leave it empty to show the members' names again."
+msgstr "この名前は自分にだけ表示されます。空にするとメンバーの名前の表示に戻ります。"
+
+#: src/app/screens/shell/shell_dialogs.cpp
+msgid "Folder on %1"
+msgstr "%1 のフォルダー"
+
+#: src/app/screens/shell/shell_dialogs.cpp
+msgid "/home/you/project"
+msgstr "/home/you/project"
+
+#: src/app/screens/shell/shell_dialogs.cpp
+msgid "Rename section"
+msgstr "セクション名を変更"
+
+#: src/app/screens/shell/shell_dialogs.cpp
+msgid "Create a section"
+msgstr "セクションを作成"
+
+#: src/app/screens/shell/shell_dialogs.cpp
+msgid "e.g. Projects"
+msgstr "例: プロジェクト"
+
+#: src/app/screens/shell/shell_dialogs.cpp
+msgid "Only you see your sections."
+msgstr "セクションは自分にだけ表示されます。"
+
+#: src/app/screens/shell/shell_dialogs.cpp
+msgid "Delete section"
+msgstr "セクションを削除"
+
+#: src/app/screens/shell/shell_dialogs.cpp
+msgid "Delete \"%1\"? Its conversations go back to where they were listed before."
+msgstr "「%1」を削除しますか？ 中の会話は元の場所に戻ります。"
+
+#: src/app/screens/shell/shell_links.cpp
+msgid "The session is gone."
+msgstr "セッションはもうありません。"
+
+#: src/app/screens/shell/shell_notify.cpp
+msgid "Someone"
+msgstr "誰か"
+
+#: src/app/screens/shell/shell_notify.cpp
+msgid "Started a huddle"
+msgstr "ハドルを開始しました"
+
+#: src/app/screens/shell/shell_notify.cpp
+msgid "You asked to be reminded about a message."
+msgstr "メッセージのリマインダーを設定していました。"
+
+#: src/app/screens/shell/shortcuts.cpp
+msgid "Jump to a conversation"
+msgstr "会話にジャンプ"
+
+#: src/app/screens/shell/shortcuts.cpp
+msgid "Switch to 1st workspace"
+msgstr "1番目のワークスペースに切り替え"
+
+#: src/app/screens/shell/shortcuts.cpp
+msgid "Switch to 2nd workspace"
+msgstr "2番目のワークスペースに切り替え"
+
+#: src/app/screens/shell/shortcuts.cpp
+msgid "Switch to 3rd workspace"
+msgstr "3番目のワークスペースに切り替え"
+
+#: src/app/screens/shell/shortcuts.cpp
+msgid "Switch to 4th workspace"
+msgstr "4番目のワークスペースに切り替え"
+
+#: src/app/screens/shell/shortcuts.cpp
+msgid "Switch to 5th workspace"
+msgstr "5番目のワークスペースに切り替え"
+
+#: src/app/screens/shell/shortcuts.cpp
+msgid "Switch to 6th workspace"
+msgstr "6番目のワークスペースに切り替え"
+
+#: src/app/screens/shell/shortcuts.cpp
+msgid "Switch to 7th workspace"
+msgstr "7番目のワークスペースに切り替え"
+
+#: src/app/screens/shell/shortcuts.cpp
+msgid "Switch to 8th workspace"
+msgstr "8番目のワークスペースに切り替え"
+
+#: src/app/screens/shell/shortcuts.cpp
+msgid "Switch to 9th workspace"
+msgstr "9番目のワークスペースに切り替え"
+
+#: src/app/screens/shell/shortcuts.cpp
+msgid "New line in message"
+msgstr "メッセージ内で改行"
+
+#: src/app/screens/shell/shortcuts.cpp
+msgid "Edit last message"
+msgstr "最後のメッセージを編集"
+
+#: src/app/screens/shell/shortcuts.cpp
+msgid "Insert link"
+msgstr "リンクを挿入"
+
+#: src/app/screens/shell/shortcuts.cpp
+msgid "Emoji picker"
+msgstr "絵文字ピッカー"
+
+#: src/app/screens/shell/shortcuts.cpp
+msgid "Cancel / exit edit"
+msgstr "キャンセル / 編集を終了"
+
+#: src/app/screens/shell/shortcuts.cpp
+msgid "Undo send"
+msgstr "送信を取り消す"
+
+#: src/app/screens/shell/shortcuts.cpp
+msgid "Bulleted list"
+msgstr "箇条書きリスト"
+
+#: src/app/screens/shell/shortcuts.cpp
+msgid "Previous conversation"
+msgstr "前の会話"
+
+#: src/app/screens/shell/shortcuts.cpp
+msgid "Next conversation"
+msgstr "次の会話"
+
+#: src/app/screens/shell/shortcuts.cpp
+msgid "Close dialog or window"
+msgstr "ダイアログまたはウィンドウを閉じる"
+
+#: src/app/screens/shell/shortcuts.cpp
+msgid "Remove idle session from msga"
+msgstr "待機中のセッションをmsgaから削除"
+
+#: src/app/screens/shell/sidebar.cpp
+msgid "Add channels"
+msgstr "チャンネルを追加"
+
+#: src/app/screens/shell/sidebar.cpp
+msgid "Add sessions"
+msgstr "セッションを追加"
+
+#: src/app/screens/shell/sidebar.cpp
+msgid "Open a direct message"
+msgstr "ダイレクトメッセージを開く"
+
+#: src/app/screens/shell/sidebar.cpp
+msgid "Until %1"
+msgstr "%1まで"
+
+#: src/app/screens/shell/sidebar.cpp src/app/screens/shell/threads_page.cpp
+msgid "you"
+msgstr "自分"
+
+#: src/app/screens/shell/sidebar.cpp
+msgid "Draft"
+msgstr "下書き"
+
+#: src/app/screens/shell/sidebar.cpp
+msgid "Starred"
+msgstr "スター付き"
+
+#: src/app/screens/shell/sidebar.cpp src/app/screens/shell/teammate_page.cpp
+msgid "Sessions"
+msgstr "セッション"
+
+#: src/app/screens/shell/sidebar.cpp
+msgid "Direct messages"
+msgstr "ダイレクトメッセージ"
+
+#: src/app/screens/shell/sidebar.cpp
+msgid "Agents & apps"
+msgstr "エージェントとアプリ"
+
+#: src/app/screens/shell/sidebar.cpp
+msgid "VIP unreads"
+msgstr "VIPの未読"
+
+#: src/app/screens/shell/sidebar.cpp
+msgid "Drafts"
+msgstr "下書き"
+
+#: src/app/screens/shell/sidebar.cpp
+msgid "External connections"
+msgstr "外部との接続"
+
+#: src/app/screens/shell/sidebar.cpp
+msgid "%1 more %2"
+msgstr "他%1件の%2"
+
+#: src/app/screens/shell/sidebar.cpp
+msgid "channel"
+msgstr "チャンネル"
+
+#: src/app/screens/shell/sidebar.cpp
+msgid "channels"
+msgstr "チャンネル"
+
+#: src/app/screens/shell/sidebar.cpp
+msgid "Team"
+msgstr "チーム"
+
+#: src/app/screens/shell/sidebar.cpp
+msgid "Find a channel"
+msgstr "チャンネルを探す"
+
+#: src/app/screens/shell/sidebar_footer.cpp
+msgid "%n background task running"
+msgid_plural "%n background tasks running"
+msgstr[0] "%n 件のバックグラウンドタスクを実行中"
+
+#: src/app/screens/shell/sidebar_footer.cpp
+msgid "Zen mode is on: tool calls are hidden. Click to show everything."
+msgstr "禅モードはオンです：ツール呼び出しは非表示です。クリックするとすべて表示します。"
+
+#: src/app/screens/shell/sidebar_footer.cpp
+msgid "Zen mode is off. Click to hide tool calls for easier reading."
+msgstr "禅モードはオフです。クリックするとツール呼び出しを隠して読みやすくします。"
+
+#: src/app/screens/shell/sidebar_footer.cpp
+msgid "Profile & status"
+msgstr "プロフィールとステータス"
+
+#: src/app/screens/shell/sidebar_footer.cpp src/app/screens/shell/status_dialog.cpp
+msgid "Profile"
+msgstr "プロフィール"
+
+#: src/app/screens/shell/sidebar_footer.cpp
+msgid "Hidden — you appear away to everyone. Click to use automatic presence."
+msgstr "非表示 — 全員に離席中と表示されます。クリックすると自動プレゼンスを使用します。"
+
+#: src/app/screens/shell/sidebar_footer.cpp
+msgid "Away — you haven't used MSGA for a while. Any click or keystroke makes you active again (Settings → System → Presence)."
+msgstr "離席中 — しばらくMSGAを使っていません。クリックやキー入力でまたアクティブになります（設定 → システム → プレゼンス）。"
+
+#: src/app/screens/shell/sidebar_footer.cpp
+msgid "Visible — connecting so you appear active without the official Slack app…"
+msgstr "表示中 — 公式Slackアプリなしでアクティブに見えるよう接続しています…"
+
+#: src/app/screens/shell/sidebar_footer.cpp
+msgid "Visible — but you appear away while no official Slack app is connected. MSGA can't hold your presence on this workspace."
+msgstr "表示中 — ただし公式Slackアプリが接続されていない間は離席中と表示されます。このワークスペースではMSGAはプレゼンスを維持できません。"
+
+#: src/app/screens/shell/sidebar_footer.cpp
+msgid "Visible — but you appear away while no official Slack app is connected. MSGA can keep you active: Settings → System → Presence."
+msgstr "表示中 — ただし公式Slackアプリが接続されていない間は離席中と表示されます。MSGAでアクティブに保てます：設定 → システム → プレゼンス。"
+
+#: src/app/screens/shell/sidebar_footer.cpp
+msgid "Visible — MSGA keeps you active. Click to appear hidden."
+msgstr "表示中 — MSGAがアクティブ状態を維持しています。クリックすると非表示にします。"
+
+#: src/app/screens/shell/sidebar_footer.cpp
+msgid "Visible — using automatic presence. Click to appear hidden."
+msgstr "表示中 — 自動プレゼンスを使用しています。クリックすると非表示にします。"
+
+#: src/app/screens/shell/sidebar_footer.cpp src/app/slack/slack_actions.cpp
+msgid "Could not change presence: %1"
+msgstr "プレゼンスを変更できませんでした: %1"
+
+#: src/app/screens/shell/sidebar_footer.cpp src/app/screens/shell/status_dialog.cpp src/app/slack/slack_actions.cpp
+msgid " — sign in to this workspace again to grant the new permission"
+msgstr " — 新しい権限を付与するには、このワークスペースに再度サインインしてください"
+
+#: src/app/screens/shell/sidebar_footer.cpp
+msgid "Manage profile"
+msgstr "プロフィールを管理"
+
+#: src/app/screens/shell/sidebar_footer.cpp
+msgid "Manage status"
+msgstr "ステータスを管理"
+
+#: src/app/screens/shell/sidebar_footer.cpp
+msgid "Show workspaces"
+msgstr "ワークスペースを表示"
+
+#: src/app/screens/shell/signin_dialogs.cpp
+msgid "The Slack desktop app wasn't found on this computer."
+msgstr "このコンピューターにSlackデスクトップアプリが見つかりませんでした。"
+
+#: src/app/screens/shell/signin_dialogs.cpp
+msgid "Couldn't read Slack's data — try quitting the Slack app first."
+msgstr "Slackのデータを読み取れませんでした — 先にSlackアプリを終了してみてください。"
+
+#: src/app/screens/shell/signin_dialogs.cpp
+msgid "Couldn't read Slack's saved session automatically."
+msgstr "Slackの保存済みセッションを自動で読み取れませんでした。"
+
+#: src/app/screens/shell/signin_dialogs.cpp
+msgid "Automatic import isn't available in this build."
+msgstr "このビルドでは自動インポートを利用できません。"
+
+#: src/app/screens/shell/signin_dialogs.cpp
+msgid "Automatic import didn't work."
+msgstr "自動インポートできませんでした。"
+
+#: src/app/screens/shell/signin_dialogs.cpp
+msgid "No supported browser was found — browser sign-in needs Chrome, Chromium, Brave, Edge or Vivaldi."
+msgstr "対応するブラウザが見つかりませんでした — ブラウザでのサインインにはChrome、Chromium、Brave、EdgeまたはVivaldiが必要です。"
+
+#: src/app/screens/shell/signin_dialogs.cpp
+msgid "Couldn't start your browser."
+msgstr "ブラウザを起動できませんでした。"
+
+#: src/app/screens/shell/signin_dialogs.cpp
+msgid "Couldn't read the session back from the browser window."
+msgstr "ブラウザウィンドウからセッションを読み取れませんでした。"
+
+#: src/app/screens/shell/signin_dialogs.cpp
+msgid "Browser sign-in was cancelled."
+msgstr "ブラウザでのサインインがキャンセルされました。"
+
+#: src/app/screens/shell/signin_dialogs.cpp
+msgid "Browser sign-in timed out."
+msgstr "ブラウザでのサインインがタイムアウトしました。"
+
+#: src/app/screens/shell/signin_dialogs.cpp
+msgid "Browser sign-in didn't work."
+msgstr "ブラウザでのサインインができませんでした。"
+
+#: src/app/screens/shell/signin_dialogs.cpp
+msgid "Add Slack workspace with a session token"
+msgstr "セッショントークンでSlackワークスペースを追加"
+
+#: src/app/screens/shell/signin_dialogs.cpp
+msgid "Log in to Slack in a browser window and msga uses that session instead of app keys — so it runs on your account's own rate limits and avoids the shared-key timeouts. New messages arrive by polling (there's no live push this way)."
+msgstr "ブラウザウィンドウでSlackにログインすると、msgaはアプリキーの代わりにそのセッションを使います — あなたのアカウント自身のレート制限で動くため、キーを共有することによるタイムアウトを避けられます。新しいメッセージはポーリングで届きます（この方式ではリアルタイムのプッシュ配信はありません）。"
+
+#: src/app/screens/shell/signin_dialogs.cpp
+msgid "Sign in with your existing Slack session instead of app keys — it uses your account's own rate limits, so it avoids the shared-key timeouts. New messages arrive by polling (there's no live push this way)."
+msgstr "アプリキーの代わりに、既存のSlackセッションでサインインします — あなたのアカウント自身のレート制限を使うため、キーを共有することによるタイムアウトを避けられます。新しいメッセージはポーリングで届きます（この方式ではリアルタイムのプッシュ配信はありません）。"
+
+#: src/app/screens/shell/signin_dialogs.cpp
+msgid "Sign in with %1"
+msgstr "%1 でサインイン"
+
+#: src/app/screens/shell/signin_dialogs.cpp
+msgid "Import from local Slack"
+msgstr "ローカルのSlackからインポート"
+
+#: src/app/screens/shell/signin_dialogs.cpp
+msgid "Paste a session cookie instead"
+msgstr "代わりにセッションクッキーを貼り付ける"
+
+#: src/app/screens/shell/signin_dialogs.cpp
+msgid ""
+"1. Sign in to the workspace in your browser.\n"
+"2. Open developer tools (F12) → Application → Cookies → https://app.slack.com, and copy the value of the cookie named “d” (it starts with xoxd-) into Cookie. Browsers hide this cookie from scripts, so it has to be copied by hand.\n"
+"3. Enter your workspace address."
+msgstr ""
+"1. ブラウザでワークスペースにサインインします。\n"
+"2. 開発者ツール（F12）→ アプリケーション → Cookie → https://app.slack.com を開き、「d」という名前のクッキーの値（xoxd- で始まります）を「クッキー」にコピーします。ブラウザはこのクッキーをスクリプトから隠すため、手作業でコピーする必要があります。\n"
+"3. ワークスペースのアドレスを入力します。"
+
+#: src/app/screens/shell/signin_dialogs.cpp
+msgid "Cookie"
+msgstr "クッキー"
+
+#: src/app/screens/shell/signin_dialogs.cpp
+msgid "Workspace"
+msgstr "ワークスペース"
+
+#: src/app/screens/shell/signin_dialogs.cpp
+msgid "Use app keys (OAuth) instead"
+msgstr "代わりにアプリキー（OAuth）を使う"
+
+#: src/app/screens/shell/signin_dialogs.cpp
+msgid "Opening a browser window…"
+msgstr "ブラウザウィンドウを開いています…"
+
+#: src/app/screens/shell/signin_dialogs.cpp
+msgid "Signed in — enter your workspace address."
+msgstr "サインインしました — ワークスペースのアドレスを入力してください。"
+
+#: src/app/screens/shell/signin_dialogs.cpp
+msgid "Importing from local Slack…"
+msgstr "ローカルのSlackからインポートしています…"
+
+#: src/app/screens/shell/signin_dialogs.cpp
+msgid "Found your Slack session — enter your workspace address."
+msgstr "Slackセッションが見つかりました — ワークスペースのアドレスを入力してください。"
+
+#: src/app/screens/shell/signin_dialogs.cpp
+msgid "Paste the “d” cookie value."
+msgstr "「d」クッキーの値を貼り付けてください。"
+
+#: src/app/screens/shell/signin_dialogs.cpp
+msgid "Enter your workspace address (e.g. myteam.slack.com)."
+msgstr "ワークスペースのアドレスを入力してください（例: myteam.slack.com）。"
+
+#: src/app/screens/shell/signin_dialogs.cpp
+msgid "Verifying your session…"
+msgstr "セッションを確認しています…"
+
+#: src/app/screens/shell/signin_dialogs.cpp
+msgid "Couldn't verify that session. Check the cookie and workspace address and try again."
+msgstr "そのセッションを確認できませんでした。クッキーとワークスペースのアドレスを確認して、もう一度お試しください。"
+
+#: src/app/screens/shell/signin_dialogs.cpp
+msgid "That session was rejected — the cookie may have expired. Sign in to Slack again and copy a fresh cookie."
+msgstr "そのセッションは拒否されました — クッキーの有効期限が切れている可能性があります。Slackに再度サインインして、新しいクッキーをコピーしてください。"
+
+#: src/app/screens/shell/signin_dialogs.cpp
+msgid "That workspace loaded but Slack didn't hand out a session token — the cookie has probably expired, or it belongs to an account without access to that workspace. Sign in to Slack again and copy a fresh cookie."
+msgstr "ワークスペースは読み込めましたが、Slackがセッショントークンを返しませんでした — クッキーの有効期限が切れているか、そのワークスペースにアクセスできないアカウントのクッキーである可能性があります。Slackに再度サインインして、新しいクッキーをコピーしてください。"
+
+#: src/app/screens/shell/signin_dialogs.cpp
+msgid "OK"
+msgstr "OK"
+
+#: src/app/screens/shell/status_dialog.cpp
+msgid "Don't clear"
+msgstr "クリアしない"
+
+#: src/app/screens/shell/status_dialog.cpp
+msgid "30 minutes"
+msgstr "30分"
+
+#: src/app/screens/shell/status_dialog.cpp
+msgid "1 hour"
+msgstr "1時間"
+
+#: src/app/screens/shell/status_dialog.cpp
+msgid "4 hours"
+msgstr "4時間"
+
+#: src/app/screens/shell/status_dialog.cpp
+msgid "This week"
+msgstr "今週"
+
+#: src/app/screens/shell/status_dialog.cpp
+msgid "In a meeting"
+msgstr "会議中"
+
+#: src/app/screens/shell/status_dialog.cpp
+msgid "Commuting"
+msgstr "通勤中"
+
+#: src/app/screens/shell/status_dialog.cpp
+msgid "Out sick"
+msgstr "体調不良"
+
+#: src/app/screens/shell/status_dialog.cpp
+msgid "Vacationing"
+msgstr "休暇中"
+
+#: src/app/screens/shell/status_dialog.cpp
+msgid "Working remotely"
+msgstr "リモート勤務"
+
+#: src/app/screens/shell/status_dialog.cpp
+msgid "Set a status"
+msgstr "ステータスを設定"
+
+#: src/app/screens/shell/status_dialog.cpp
+msgid "What's your status?"
+msgstr "ステータスは？"
+
+#: src/app/screens/shell/status_dialog.cpp
+msgid "Clear after"
+msgstr "クリアするタイミング"
+
+#: src/app/screens/shell/status_dialog.cpp
+msgid "Suggestions"
+msgstr "候補"
+
+#: src/app/screens/shell/status_dialog.cpp
+msgid "For %1"
+msgstr "%1向け"
+
+#: src/app/screens/shell/status_dialog.cpp
+msgid "Clear status"
+msgstr "ステータスをクリア"
+
+#: src/app/screens/shell/status_dialog.cpp src/app/slack/slack_actions.cpp
+msgid "Could not set status: %1"
+msgstr "ステータスを設定できませんでした: %1"
+
+#: src/app/screens/shell/status_dialog.cpp
+msgid "Change photo"
+msgstr "写真を変更"
+
+#: src/app/screens/shell/status_dialog.cpp
+msgid "Your display name"
+msgstr "表示名"
+
+#: src/app/screens/shell/status_dialog.cpp
+msgid "name@example.com"
+msgstr "name@example.com"
+
+#: src/app/screens/shell/status_dialog.cpp
+msgid "Phone"
+msgstr "電話番号"
+
+#: src/app/screens/shell/status_dialog.cpp
+msgid "Save changes"
+msgstr "変更を保存"
+
+#: src/app/screens/shell/status_dialog.cpp
+msgid "Choose a profile photo"
+msgstr "プロフィール写真を選択"
+
+#: src/app/screens/shell/status_dialog.cpp
+msgid "Uploading photo…"
+msgstr "写真をアップロード中…"
+
+#: src/app/screens/shell/status_dialog.cpp
+msgid "Could not upload photo: %1"
+msgstr "写真をアップロードできませんでした: %1"
+
+#: src/app/screens/shell/status_dialog.cpp
+msgid "Photo updated."
+msgstr "写真を更新しました。"
+
+#: src/app/screens/shell/status_dialog.cpp
+msgid "Saving…"
+msgstr "保存中…"
+
+#: src/app/screens/shell/status_dialog.cpp
+msgid "Could not save: %1"
+msgstr "保存できませんでした: %1"
+
+#: src/app/screens/shell/teammate_page.cpp
+msgid "No sessions yet. Write below to start one."
+msgstr "まだセッションはありません。下に書き込むと始まります。"
+
+#: src/app/screens/shell/teammate_page.cpp
+msgid "Change folder"
+msgstr "フォルダーを変更"
+
+#: src/app/screens/shell/teammate_page.cpp
+msgid "%n new"
+msgid_plural "%n new"
+msgstr[0] "%n 件の新着"
+
+#: src/app/screens/shell/teammate_page.cpp
+msgid "Start new session in %1"
+msgstr "%1 で新しいセッションを開始"
+
+#: src/app/screens/shell/teammate_page.cpp
+msgid "%n session"
+msgid_plural "%n sessions"
+msgstr[0] "%n 件のセッション"
+
+#: src/app/screens/shell/teammate_page.cpp
+msgid "Browse…"
+msgstr "参照…"
+
+#: src/app/screens/shell/teammate_page.cpp
+msgid "Folder for new sessions with the %1"
+msgstr "%1 との新しいセッションのフォルダー"
+
+#: src/app/screens/shell/threads_page.cpp
+msgid "%1 files"
+msgstr "%1個のファイル"
+
+#: src/app/screens/shell/threads_page.cpp
+msgid "%1 and %2 others"
+msgstr "%1、他%2名"
+
+#: src/app/screens/shell/threads_page.cpp
+msgid "%1 and you"
+msgstr "%1とあなた"
+
+#: src/app/screens/shell/threads_page.cpp
+msgid "New"
+msgstr "新着"
+
+#: src/app/screens/shell/threads_page.cpp
+msgid "Show 1 more reply"
+msgstr "他1件の返信を表示"
+
+#: src/app/screens/shell/threads_page.cpp
+msgid "Show %1 more replies"
+msgstr "他%1件の返信を表示"
+
+#: src/app/screens/shell/threads_page.cpp
+msgid "Show more threads"
+msgstr "さらにスレッドを表示"
+
+#: src/app/screens/shell/threads_page.cpp
+msgid "Loading threads…"
+msgstr "スレッドを読み込み中…"
+
+#: src/app/screens/shell/threads_page.cpp
+msgid "Couldn't load threads. Try again later."
+msgstr "スレッドを読み込めませんでした。後でもう一度お試しください。"
+
+#: src/app/screens/shell/threads_page.cpp
+msgid "Threads you're following will appear here."
+msgstr "フォロー中のスレッドがここに表示されます。"
+
+#: src/app/screens/shell/typing_indicator.cpp
+msgid "%1m %2s"
+msgstr "%1分%2秒"
+
+#: src/app/screens/shell/typing_indicator.cpp
+msgid "<b>You</b> are typing on another device…"
+msgstr "<b>あなた</b>が別のデバイスで入力中…"
+
+#: src/app/screens/shell/typing_indicator.cpp
+msgid "%1 is thinking (%2)…"
+msgstr "%1が考え中（%2）…"
+
+#: src/app/screens/shell/typing_indicator.cpp
+msgid "%1 are thinking…"
+msgstr "%1が考え中…"
+
+#: src/app/screens/shell/update_bar.cpp
+msgid "A new version of msga is ready to install."
+msgstr "msgaの新しいバージョンをインストールする準備ができました。"
+
+#: src/app/screens/shell/update_bar.cpp
+msgid "Open installer"
+msgstr "インストーラーを開く"
+
+#: src/app/screens/shell/update_bar.cpp
+msgid "A new version of msga has been downloaded. Restart to apply."
+msgstr "msgaの新しいバージョンをダウンロードしました。適用するには再起動してください。"
+
+#: src/app/screens/shell/update_bar.cpp
+msgid "Restart now"
+msgstr "今すぐ再起動"
+
+#: src/app/screens/shell/voice_strip.cpp
+msgid "Cancel voice input (Esc)"
+msgstr "音声入力をキャンセル（Esc）"
+
+#: src/app/screens/shell/voice_strip.cpp
+msgid "Dismiss"
+msgstr "閉じる"
+
+#: src/app/screens/shell/voice_strip.cpp
+msgid "Esc to cancel"
+msgstr "Escでキャンセル"
+
+#: src/app/screens/shell/voice_strip.cpp
+msgid "Transcribing…"
+msgstr "文字起こし中…"
+
+#: src/app/screens/shell/voice_strip.cpp
+msgid "Cleaning up…"
+msgstr "整えています…"
+
+#: src/app/screens/shell/workflow_form.cpp
+msgid "Please fill in this field."
+msgstr "この項目を入力してください。"
+
+#: src/app/screens/shell/workflow_form.cpp
+msgid "Please enter a number."
+msgstr "数値を入力してください。"
+
+#: src/app/screens/shell/workflow_form.cpp
+msgid "Please enter a whole number."
+msgstr "整数を入力してください。"
+
+#: src/app/screens/shell/workflow_form.cpp
+msgid "Please enter at least %1 characters."
+msgstr "%1 文字以上入力してください。"
+
+#: src/app/screens/shell/workflow_form.cpp
+msgid "Choose people"
+msgstr "メンバーを選択"
+
+#: src/app/screens/shell/workflow_form.cpp
+msgid "Choose someone"
+msgstr "メンバーを選択"
+
+#: src/app/screens/shell/workflow_form.cpp
+msgid "Choose channels"
+msgstr "チャンネルを選択"
+
+#: src/app/screens/shell/workflow_form.cpp
+msgid "Choose a channel"
+msgstr "チャンネルを選択"
+
+#: src/app/screens/shell/workflow_form.cpp
+msgid "This form has a field msga can't fill in. Start the workflow in Slack to finish it there."
+msgstr "このフォームには msga で入力できない項目があります。Slack でワークフローを開始して入力してください。"
+
+#: src/app/screens/shell/workflow_form.cpp
+msgid "(optional)"
+msgstr "（任意）"
+
+#: src/app/screens/shell/workflow_form.cpp
+msgid "Open in Slack"
+msgstr "Slack で開く"
+
+#: src/app/screens/shell/workflow_form.cpp
+msgid "Submit"
+msgstr "送信"
+
+#: src/app/screens/shell/workflow_form.cpp
+msgid "Choose an option"
+msgstr "オプションを選択"
+
+#: src/app/screens/shell/workflow_form.cpp
+msgid "Give a value"
+msgstr "値を指定"
+
+#: src/app/screens/shell/workflow_form.cpp
+msgid "This field can only be filled in in Slack."
+msgstr "この項目は Slack でのみ入力できます。"
+
+#: src/app/screens/shell/workflow_form.cpp
+msgid "Switch back to the workspace this form came from to send it."
+msgstr "送信するには、このフォームのワークスペースに戻ってください。"
+
+#: src/app/screens/shell/workflow_form.cpp
+msgid "The form couldn't be sent (%1)."
+msgstr "フォームを送信できませんでした（%1）。"
+
+#: src/app/slack/browser_login.cpp
+msgid "Opening %1…"
+msgstr "%1 を開いています…"
+
+#: src/app/slack/browser_login.cpp
+msgid "Sign in to Slack in the browser window — msga picks it up automatically."
+msgstr "ブラウザウィンドウでSlackにサインインしてください — msgaが自動的に受け取ります。"
+
+#: src/app/slack/browser_login.cpp
+msgid "Signed in — finishing up in msga. You can close this."
+msgstr "サインインしました — msgaで処理を完了しています。このウィンドウは閉じてかまいません。"
+
+#: src/app/slack/browser_login.cpp
+msgid "Signed in — looking up your workspaces…"
+msgstr "サインインしました — ワークスペースを検索しています…"
+
+#: src/app/slack/oauth.cpp
+msgid ""
+"No Slack app keys are set up yet.\n"
+"\n"
+"Open Settings → System, choose “Slack app keys”, and paste your client ID, client secret and app token. Building msga yourself? Put them in credentials.cmake instead and rebuild."
+msgstr ""
+"Slackアプリキーがまだ設定されていません。\n"
+"\n"
+"設定 → システムを開いて「Slackアプリキー」を選び、クライアントID、クライアントシークレット、アプリトークンを貼り付けてください。msgaを自分でビルドしている場合は、代わりに credentials.cmake に記入して再ビルドしてください。"
+
+#: src/app/slack/slack_actions.cpp
+msgid "You can't reply to this message."
+msgstr "このメッセージには返信できません。"
+
+#: src/app/slack/slack_actions.cpp
+msgid "You're not a member of this channel."
+msgstr "このチャンネルのメンバーではありません。"
+
+#: src/app/slack/slack_actions.cpp
+msgid "This conversation is archived."
+msgstr "この会話はアーカイブされています。"
+
+#: src/app/slack/slack_actions.cpp
+msgid "The message is too long."
+msgstr "メッセージが長すぎます。"
+
+#: src/app/slack/slack_actions.cpp
+msgid "This conversation no longer exists."
+msgstr "この会話は存在しません。"
+
+#: src/app/slack/slack_actions.cpp
+msgid "You don't have permission to post here."
+msgstr "ここに投稿する権限がありません。"
+
+#: src/app/slack/slack_actions.cpp
+msgid "That time has already passed."
+msgstr "その時刻はすでに過ぎています。"
+
+#: src/app/slack/slack_actions.cpp
+msgid "Messages can be scheduled up to 120 days ahead."
+msgstr "メッセージは120日先まで予約できます。"
+
+#: src/app/slack/slack_actions.cpp
+msgid "Slack has an unsent draft in this conversation. Send or clear it first."
+msgstr "この会話にはSlackの未送信の下書きがあります。先に送信するか削除してください。"
+
+#: src/app/slack/slack_actions.cpp
+msgid "Upload failed: %1"
+msgstr "アップロードに失敗しました: %1"
+
+#: src/app/slack/slack_actions.cpp
+msgid "Couldn't set the reminder: %1"
+msgstr "リマインダーを設定できませんでした: %1"
+
+#: src/app/slack/slack_actions.cpp
+msgid "Couldn't save the message: %1"
+msgstr "メッセージを保存できませんでした: %1"
+
+#: src/app/slack/slack_actions.cpp
+msgid "Couldn't remove the reminder: %1"
+msgstr "リマインダーを削除できませんでした: %1"
+
+#: src/app/slack/slack_actions.cpp
+msgid "Couldn't remove the saved message: %1"
+msgstr "保存済みメッセージを削除できませんでした: %1"
+
+#: src/app/slack/slack_actions.cpp
+msgid "Couldn't schedule message: %1"
+msgstr "メッセージを予約できませんでした: %1"
+
+#: src/app/slack/slack_actions.cpp
+msgid "Couldn't cancel the scheduled message: %1"
+msgstr "予約メッセージを取り消せませんでした: %1"
+
+#: src/app/slack/slack_actions.cpp
+msgid "Could not update profile: %1"
+msgstr "プロフィールを更新できませんでした: %1"
+
+#: src/app/slack/slack_actions.cpp
+msgid "Could not update avatar: %1"
+msgstr "アバターを更新できませんでした: %1"
+
+#: src/app/slack/slack_actions.cpp
+msgid "Appends ¯\\_(ツ)_/¯ to your message"
+msgstr "メッセージの末尾に ¯\\_(ツ)_/¯ を追加します"
+
+#: src/app/slack/slack_actions.cpp
+msgid "[message]"
+msgstr "[メッセージ]"
+
+#: src/app/slack/slack_actions.cpp
+msgid "Mute or unmute a channel"
+msgstr "チャンネルをミュートまたはミュート解除します"
+
+#: src/app/slack/slack_actions.cpp
+msgid "Set yourself to active"
+msgstr "ステータスをアクティブにします"
+
+#: src/app/slack/slack_actions.cpp
+msgid "Toggle your away status"
+msgstr "離席ステータスを切り替えます"
+
+#: src/app/slack/slack_actions.cpp
+msgid "Pause or resume notifications"
+msgstr "通知を一時停止または再開します"
+
+#: src/app/slack/slack_actions.cpp
+msgid "[duration, e.g. 30m or 2h] or off"
+msgstr "[期間（例: 30m、2h）] または off"
+
+#: src/app/slack/slack_actions.cpp
+msgid "Set or clear your status"
+msgstr "ステータスを設定またはクリアします"
+
+#: src/app/slack/slack_actions.cpp
+msgid "[:emoji:] [text] or clear"
+msgstr "[:絵文字:] [テキスト] または clear"
+
+#: src/app/slack/slack_actions.cpp
+msgid "Send a direct message"
+msgstr "ダイレクトメッセージを送信します"
+
+#: src/app/slack/slack_actions.cpp
+msgid "@user [message]"
+msgstr "@ユーザー [メッセージ]"
+
+#: src/app/slack/slack_actions.cpp
+msgid "Leave a channel or conversation"
+msgstr "チャンネルまたは会話から退出します"
+
+#: src/app/slack/slack_actions.cpp
+msgid "No such user: %1"
+msgstr "ユーザーが見つかりません: %1"
+
+#: src/app/slack/slack_actions.cpp
+msgid "Usage: /dnd [duration, e.g. 30m or 2h] — or /dnd off to resume"
+msgstr "使い方: /dnd [時間。例: 30m、2h] — 解除は /dnd off"
+
+#: src/app/slack/slack_actions.cpp
+msgid "Could not update notifications: %1"
+msgstr "通知設定を更新できませんでした: %1"
+
+#: src/app/slack/slack_actions.cpp
+msgid "Command /%1 failed: %2"
+msgstr "コマンド /%1 が失敗しました: %2"
+
+#: src/app/slack/slack_backend.cpp
+msgid "Slack is rate-limiting requests (%1) — retrying in %n second."
+msgid_plural "Slack is rate-limiting requests (%1) — retrying in %n seconds."
+msgstr[0] "Slackがリクエストをレート制限しています (%1) — %n 秒後に再試行します。"
+
+#: src/app/slack/slack_backend.cpp
+msgid "Couldn't change the sidebar sections: %1"
+msgstr "サイドバーのセクションを変更できませんでした: %1"
+
+#: src/app/slack/slack_json.cpp
+msgid "(A %1 block msga can't show yet)"
+msgstr "（msgaではまだ表示できない%1ブロック）"
+
+#: src/app/update/updater.cpp
+msgid "Cannot write update to %1"
+msgstr "%1にアップデートを書き込めません"
+
+#: src/app/update/updater.cpp
+msgid "Could not replace binary: %1"
+msgstr "バイナリを置き換えられませんでした: %1"
+
+#: src/app/update/updater.cpp
+msgid "Could not move current binary — check file permissions on %1"
+msgstr "現在のバイナリを移動できませんでした — %1のファイル権限を確認してください"
+
+#: src/app/update/updater.cpp
+msgid "Could not place new binary at %1"
+msgstr "新しいバイナリを%1に配置できませんでした"
+
+#: src/app/update/updater.cpp
+msgid "Automatic updates are not supported on this platform."
+msgstr "このプラットフォームでは自動アップデートはサポートされていません。"
+
+#: src/app/update/updater.cpp
+msgid "Could not parse version manifest."
+msgstr "バージョンマニフェストを解析できませんでした。"
+
+#: src/app/update/updater.cpp
+msgid "Download failed: %1"
+msgstr "ダウンロードに失敗しました: %1"
+
+#: src/app/update/updater.cpp
+msgid "Downloaded update is corrupt (checksum mismatch)."
+msgstr "ダウンロードした更新ファイルが破損しています（チェックサム不一致）。"
+
+#~ msgid "When a message is sent, \":)\" becomes 🙂 — the message box keeps what you typed."
+#~ msgstr "送信するときに「:)」は「🙂」になります（入力欄は入力したまま）。"
+
+#~ msgid "\":)\" goes out as \"🙂\": when the message is sent, not as you type."
+#~ msgstr "「:)」は送信のときに「🙂」になります（入力中は変わりません）。"
+
+#~ msgid ""
+#~ "The conversation you are reading stays listed until you move on.\n"
+#~ "Starred conversations are always shown."
+#~ msgstr ""
+#~ "閲覧中の会話は、別の会話に移るまで表示されたままになります。\n"
+#~ "スター付きの会話は常に表示されます。"
+
+#~ msgid "Just now"
+#~ msgstr "たった今"
+
+#~ msgid "%1 min ago"
+#~ msgstr "%1 分前"
+
+#~ msgid "%1 h ago"
+#~ msgstr "%1 時間前"
+
+#~ msgid "%1 days ago"
+#~ msgstr "%1 日前"
+
+#~ msgid "AI reply on behalf of %1:"
+#~ msgstr "%1 に代わる AI の返信："
+
+#~ msgid "Open the Slack thread"
+#~ msgstr "Slack のスレッドを開く"
+
+#~ msgid "Ask agent…"
+#~ msgstr "エージェントに質問…"
+
+#~ msgid "January"
+#~ msgstr "1月"
+
+#~ msgid "February"
+#~ msgstr "2月"
+
+#~ msgid "March"
+#~ msgstr "3月"
+
+#~ msgid "April"
+#~ msgstr "4月"
+
+#~ msgid "May"
+#~ msgstr "5月"
+
+#~ msgid "June"
+#~ msgstr "6月"
+
+#~ msgid "July"
+#~ msgstr "7月"
+
+#~ msgid "August"
+#~ msgstr "8月"
+
+#~ msgid "September"
+#~ msgstr "9月"
+
+#~ msgid "October"
+#~ msgstr "10月"
+
+#~ msgid "November"
+#~ msgstr "11月"
+
+#~ msgid "December"
+#~ msgstr "12月"
+
+#~ msgid "Jan"
+#~ msgstr "1月"
+
+#~ msgid "Feb"
+#~ msgstr "2月"
+
+#~ msgid "Mar"
+#~ msgstr "3月"
+
+#~ msgid "Apr"
+#~ msgstr "4月"
+
+#~ msgid "Jun"
+#~ msgstr "6月"
+
+#~ msgid "Jul"
+#~ msgstr "7月"
+
+#~ msgid "Aug"
+#~ msgstr "8月"
+
+#~ msgid "Sep"
+#~ msgstr "9月"
+
+#~ msgid "Oct"
+#~ msgstr "10月"
+
+#~ msgid "Nov"
+#~ msgstr "11月"
+
+#~ msgid "Dec"
+#~ msgstr "12月"
+
+#~ msgid "Sunday"
+#~ msgstr "日曜日"
+
+#~ msgid "Monday"
+#~ msgstr "月曜日"
+
+#~ msgid "Tuesday"
+#~ msgstr "火曜日"
+
+#~ msgid "Wednesday"
+#~ msgstr "水曜日"
+
+#~ msgid "Thursday"
+#~ msgstr "木曜日"
+
+#~ msgid "Friday"
+#~ msgstr "金曜日"
+
+#~ msgid "Saturday"
+#~ msgstr "土曜日"
+
+#~ msgid "AM"
+#~ msgstr "午前"
+
+#~ msgid "PM"
+#~ msgstr "午後"
+
+#~ msgid "h:mm:ss AP"
+#~ msgstr "APh:mm:ss"
+
+#~ msgid "h:mm AP"
+#~ msgstr "APh:mm"
+
+#~ msgid "MMMM d, yyyy"
+#~ msgstr "yyyy年M月d日"
+
+#~ msgid "MMMM d"
+#~ msgstr "M月d日"
+
+#~ msgid "MMM d, "
+#~ msgstr "M月d日 "
+
+#~ msgid "MMMM yyyy"
+#~ msgstr "yyyy年M月"
+
+#~ msgid "Sun"
+#~ msgstr "日"
+
+#~ msgid "Mon"
+#~ msgstr "月"
+
+#~ msgid "Tue"
+#~ msgstr "火"
+
+#~ msgid "Wed"
+#~ msgstr "水"
+
+#~ msgid "Thu"
+#~ msgstr "木"
+
+#~ msgid "Fri"
+#~ msgstr "金"
+
+#~ msgid "Sat"
+#~ msgstr "土"
+
+#~ msgid "dddd, MMMM d, yyyy"
+#~ msgstr "yyyy年M月d日（dddd）"
+
+#~ msgid "dddd, MMMM d"
+#~ msgstr "M月d日（dddd）"
+
+#~ msgid "Choose a tray icon"
+#~ msgstr "トレイアイコンを選択"
+
+#~ msgid "Saved. Restart msga to apply."
+#~ msgstr "保存しました。反映するには msga を再起動してください。"
+
+#~ msgid "Create channel"
+#~ msgstr "チャンネルを作成"
+
+#~ msgid "Jump to…"
+#~ msgstr "移動先…"
+
+#~ msgid "Subject"
+#~ msgstr "件名"
+
+#~ msgid "Message #channel"
+#~ msgstr "#channel へのメッセージ"
+
+#~ msgid "%1  →"
+#~ msgstr "%1  →"
+
+#~ msgid "Attach File"
+#~ msgstr "ファイルを添付"
+
+#~ msgid "Skin Tone"
+#~ msgstr "肌の色"
+
+#~ msgid "Search Results"
+#~ msgstr "検索結果"
+
+#~ msgid "Frequently Used"
+#~ msgstr "よく使う絵文字"
+
+#~ msgid "Copy Link"
+#~ msgstr "リンクをコピー"
+
+#~ msgid "Couldn't start the chat."
+#~ msgstr "チャットを開始できませんでした。"
+
+#~ msgid "Images (*.png *.jpg *.jpeg *.webp *.gif *.bmp *.svg)"
+#~ msgstr "画像 (*.png *.jpg *.jpeg *.webp *.gif *.bmp *.svg)"
+
+#~ msgid "Couldn't apply the label."
+#~ msgstr "ラベルを適用できませんでした。"
+
+#~ msgid "This service is not supported."
+#~ msgstr "このサービスはサポートされていません。"
+
+#~ msgid "%1k"
+#~ msgstr "%1k"
+
+#~ msgid "Could not save the file"
+#~ msgstr "ファイルを保存できませんでした"
+
+#~ msgid "%n others"
+#~ msgid_plural "%n others"
+#~ msgstr[0] "他%n人"
+
+#~ msgid "Could not listen on port %1: %2"
+#~ msgstr "ポート%1で待ち受けできませんでした: %2"
+
+#~ msgid "You can close this window and return to msga."
+#~ msgstr "このウィンドウを閉じてmsgaに戻ってください。"
+
+#~ msgid "Images (*.png *.jpg *.jpeg *.gif)"
+#~ msgstr "画像 (*.png *.jpg *.jpeg *.gif)"
+
+#~ msgid "Add email account"
+#~ msgstr "メールアカウントを追加"
+
+#~ msgid "IMAP server"
+#~ msgstr "IMAP サーバー"
+
+#~ msgid "Detect"
+#~ msgstr "自動検出"
+
+#~ msgid "Sign in with Google"
+#~ msgstr "Google でサインイン"
+
+#~ msgid "Password or app password"
+#~ msgstr "パスワードまたはアプリパスワード"
+
+#~ msgid "Continue"
+#~ msgstr "続行"
+
+#~ msgid "Enter a valid email address."
+#~ msgstr "有効なメールアドレスを入力してください。"
+
+#~ msgid "Add"
+#~ msgstr "追加"
+
+#~ msgid "%1 needs an app password to sign in"
+#~ msgstr "%1 でサインインするにはアプリパスワードが必要です"
+
+#~ msgid "%1 needs an app password"
+#~ msgstr "%1 にはアプリパスワードが必要です"
+
+#~ msgid "Server: %1"
+#~ msgstr "サーバー: %1"
+
+#~ msgid "Couldn't detect the server — enter it manually."
+#~ msgstr "サーバーを検出できませんでした — 手動で入力してください。"
+
+#~ msgid "Detecting…"
+#~ msgstr "検出中…"
+
+#~ msgid "Enter the IMAP server or click Detect."
+#~ msgstr "IMAP サーバーを入力するか、自動検出をクリックしてください。"
+
+#~ msgid "Enter your password."
+#~ msgstr "パスワードを入力してください。"
+
+#~ msgid "Checking…"
+#~ msgstr "確認中…"
+
+#~ msgid "Sign-in failed: %1"
+#~ msgstr "サインインに失敗しました: %1"
+
+#~ msgid "Opening your browser to sign in…"
+#~ msgstr "サインインのためブラウザを開いています…"
+
+#~ msgid "Sign-in failed: no access token returned."
+#~ msgstr "サインインに失敗しました: アクセストークンが返されませんでした。"
+
+#~ msgid "Could not load canvas: %1"
+#~ msgstr "canvasを読み込めませんでした: %1"
+
+#~ msgid "Microsoft Teams"
+#~ msgstr "Microsoft Teams"
+
+#~ msgid "Connecting a Teams workspace needs the client ID of an Entra app registration. No secret is required."
+#~ msgstr "Teamsワークスペースを接続するには、Entraアプリ登録のクライアントIDが必要です。シークレットは不要です。"
+
+#~ msgid "How to register your Teams app…"
+#~ msgstr "Teamsアプリの登録方法…"
+
+#~ msgid "e.g. 12345678-1234-1234-1234-123456789abc"
+#~ msgstr "例: 12345678-1234-1234-1234-123456789abc"
+
+#~ msgid "Using this build's client ID — paste one here to override it"
+#~ msgstr "このビルドのクライアントIDを使用中 — 上書きするにはここに貼り付けてください"
+
+#~ msgid "Client ID cleared."
+#~ msgstr "クライアントIDを消去しました。"
+
+#~ msgid "Client ID saved."
+#~ msgstr "クライアントIDを保存しました。"
+
+#~ msgid ""
+#~ "gRPC\n"
+#~ "Terraform\n"
+#~ "nginx"
+#~ msgstr ""
+#~ "gRPC\n"
+#~ "Terraform\n"
+#~ "nginx"
+
+#~ msgid "No Slack workspace can provide a theme"
+#~ msgstr "テーマを取得できる Slack ワークスペースがありません"
+
+#~ msgid "Deactivated account"
+#~ msgstr "無効化されたアカウント"
+
+#~ msgid "The file isn't there anymore."
+#~ msgstr "ファイルはもうありません。"
+
+#~ msgid ""
+#~ "No Microsoft Teams app is set up yet.\n"
+#~ "\n"
+#~ "Open Settings → System, find “Microsoft Teams”, and paste your Entra app's client ID. Building msga yourself? Put it in credentials.cmake as MSGA_TEAMS_CLIENT_ID instead and rebuild."
+#~ msgstr ""
+#~ "Microsoft Teamsアプリがまだ設定されていません。\n"
+#~ "\n"
+#~ "設定 → システムを開いて「Microsoft Teams」を探し、EntraアプリのクライアントIDを貼り付けてください。msgaを自分でビルドしている場合は、代わりに credentials.cmake に MSGA_TEAMS_CLIENT_ID として記入して再ビルドしてください。"

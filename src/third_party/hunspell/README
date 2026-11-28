@@ -1,0 +1,68 @@
+Hunspell 1.7.2 (https://github.com/hunspell/hunspell), trimmed for msga
+=======================================================================
+
+The spell checker behind msga's composer on Linux (src/app/spell/backend_linux.cpp).
+It is compiled only by the Linux branch of CMakeLists.txt, as the static library
+msga_hunspell; macOS and Windows use their system spell checkers and never build it.
+The dictionaries are not vendored: msga reads the ones the distribution installed
+(/usr/share/hunspell, /usr/share/myspell, ...) at runtime.
+
+License: Hunspell is tri-licensed MPL 1.1 / GPL 2.0 or later / LGPL 2.1 or later
+(license.hunspell), and builds on MySpell (license.myspell). msga, GPL-3.0-or-later,
+uses it under the GPL option. The copy here is a modified version: every change is
+marked "msga modification" in the source and listed in msga.patch.
+
+What is here
+------------
+From hunspell-1.7.2/src/hunspell only the sources the library needs:
+
+  affentry  affixmgr  csutil  filemgr  hashmgr  hunspell  hunzip  phonet
+  replist  suggestmgr                          (.cxx and .hxx of each)
+  hunspell.h  hunvisapi.h  atypes.hxx  baseaffix.hxx  htypes.hxx
+  langnum.hxx  w_char.hxx
+
+Left out: the autotools files, the tools and tests, utf_info.hxx (see below) and
+hunvisapi.h.in (hunvisapi.h is its output, with @HAVE_VISIBILITY@ set to 1;
+HUNSPELL_STATIC, which the CMake target defines, makes the export macro empty
+anyway).
+
+What was changed (msga.patch)
+-----------------------------
+1. HUNSPELL_HOST_UNICODE (csutil.cxx): unicodetoupper(), unicodetolower() and
+   unicodeisalpha() call hunspell_host_toupper/tolower/isalpha, which msga
+   implements with the C library's towupper/towlower/iswalpha in a C.UTF-8
+   locale (src/app/spell/backend_linux.cpp), in place of the 64K-entry utf_tbl of
+   utf_info.hxx: 384 KB of the binary and 2.5 MB of source, for tables libc
+   already carries (the Qt app implemented the same hooks with QChar). The
+   same kind of host hook as upstream's own OPENOFFICEORG (ICU) and
+   MOZILLA_CLIENT branches.
+2. HUNSPELL_NO_XML (hunspell.cxx): compiles out the SPELL_XML branch of
+   HunspellImpl::suggest(), the only caller of spellml(). With it the whole
+   morphology/XML API (spellml, analyze, stem, generate) is unreachable, and the
+   linker's section GC / LTO drops it (~90 KB).
+3. HUNSPELL_NO_IOSTREAM (csutil, filemgr, hunzip, hashmgr): the .dic/.aff (and
+   .hz) files are read with C stdio (fopen/fgets/fread) instead of std::ifstream,
+   and line_tok() splits by hand instead of through std::stringstream. Hunspell
+   was the only iostream user in msga, and iostreams pulled libstdc++'s whole
+   locale and stream machinery (~350 KB) into the static release binary.
+   read_line() keeps std::getline's rules (strip the '\n' only, a last line
+   without one still counts).
+
+Together with -Os and hidden visibility the library comes to about 140 KB of the
+static release binary (release-linux-static.sh; stock 1.7.2 at -O2 added about
+734 KB). On about 3,500 words each in en_US, ru_RU, de_DE_frami
+and fa-IR (dictionary words, their case variants and generated typos) spell() and
+suggest() gave byte-identical output to stock 1.7.2.
+
+Redoing it for a new Hunspell release
+-------------------------------------
+  1. Unpack the release; copy the files listed above from src/hunspell/ here,
+     hunvisapi.h.in as hunvisapi.h.
+  2. patch -p1 < msga.patch   (run inside this directory; fix up by hand if the
+     context moved: the hooks sit in the unicodeto*/unicodeisalpha functions,
+     around the SPELL_XML check in HunspellImpl::suggest, and at every stream use
+     in csutil/filemgr/hunzip/hashmgr).
+  3. Build and run the spell tests (src/app/spell/tests), and compare spell/suggest
+     output with a stock build on a word list if the diff touched more than the
+     hooks.
+  4. Regenerate msga.patch against the new stock files.

@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Code-signing entitlements for msga.app (applied by scripts/release.sh),
+  unchanged across versions.
+
+  device.audio-input: under the hardened runtime (Developer ID signing with
+  the runtime option) macOS refuses microphone access to a binary without it:
+  no prompt, just silence, which breaks voice input (plat::audio::Recorder,
+  AVAudioRecorder). Nothing else is needed: msga has no JIT and loads only
+  the system's frameworks.
+-->
+<plist version="1.0">
+<dict>
+    <key>com.apple.security.device.audio-input</key>
+    <true/>
+</dict>
+</plist>

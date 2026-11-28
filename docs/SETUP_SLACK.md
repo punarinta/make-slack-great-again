@@ -104,6 +104,7 @@ Scroll down to **User Token Scopes** and add the following:
 
 | Scope | Purpose |
 |---|---|
+| `bookmarks:read` | Show a channel's bookmarks (the header's Bookmarks tab) |
 | `canvases:read` | Read canvas files (`files.info` gates canvas files behind this) |
 | `canvases:write` | Create, edit and delete canvases |
 | `channels:history` | Read messages in public channels |
@@ -133,6 +134,7 @@ Scroll down to **User Token Scopes** and add the following:
 | `team:read` | Get workspace info |
 | `users.profile:read` | Read user profile fields |
 | `users.profile:write` | Set or clear your status (`/status`) |
+| `usergroups:read` | Show user-group mentions (`@eng-oncall`) by name and badge the groups you belong to |
 | `users:read` | Look up user info |
 | `users:write` | Set your presence — away/active (`/away`, `/active`) |
 
@@ -162,6 +164,7 @@ Under **Subscribe to events on behalf of users**, add:
 | `member_joined_channel` | Live channel membership updates |
 | `user_change` | Live profile, name and avatar updates |
 | `dnd_updated_user` | Live Do Not Disturb changes |
+| `subteam_created`, `subteam_updated`, `subteam_members_changed`, `subteam_self_added`, `subteam_self_removed` | Live user-group renames and membership (optional; the list is also re-fetched daily) |
 
 Click **Save Changes**. Slack will prompt you to reinstall the app — do so via **Install App → Reinstall to Workspace**.
 

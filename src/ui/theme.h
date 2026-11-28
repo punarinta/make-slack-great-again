@@ -1,315 +1,255 @@
-// SPDX-License-Identifier: GPL-3.0-or-later
-// Copyright (C) 2026  Vladimir Osipov
-// Centralized semantic theming system.
-// All colors, font sizes and spacing are accessed via Th::c() — the active theme.
-// Use Th::qss(color) to embed a QColor inside a Qt stylesheet string.
+// Design tokens: one flat table of colours per variant (light/dark) plus
+// shared metrics and font roles. Views store token ids, never resolved
+// colours, so switching the theme is a repaint (and a text re-layout), not a
+// tree rebuild. Resolved through the current App's theme.
 #pragma once
 
-#include <QColor>
-#include <QLinearGradient>
-#include <QString>
+#include "gfx/gfx.h"
+#include "text/text.h"
 
-#include <vector>
+#include <cstdint>
+#include <string>
+#include <string_view>
 
-class QWidget;
+namespace ui {
 
-namespace Th {
+using gfx::Color;
 
-// ── Sub-structs ───────────────────────────────────────────────────────────────
-
-struct NavColors {
-    QColor bg;               // workspace sidebar column (solid mid-point; borders/dots/seams)
-    QColor primary;          // conversation list panel (solid mid-point; row base, borders)
-    QColor workspaceBubble;  // workspace icon chip
-    QColor itemHover;        // hovered conversation row
-    QColor itemSelected;     // active/selected conversation row (near-white pill)
-    QColor itemSelectedText; // dark ink (text/icons/away-ring) on the selected pill
-    QColor itemText;         // primary text on nav panel
-    QColor itemTextDim;      // subdued text (channel names, inactive)
-    QColor scrollThumb;      // scrollbar thumb on dark panel
-    QColor scrollThumbHover;
-    QColor extBadgeBg;   // "EXT" tag background on the dark sidebar
-    QColor extBadgeText; // "EXT" tag text on the dark sidebar
-    // Slack-style sidebar gradient endpoints (vertical, lighter at top). The
-    // workspace rail and the conversation list share one continuous gradient
-    // anchored to the window; see Th::navGradient(). Derived from bg/primary.
-    QColor bgGradTop;
-    QColor bgGradBottom;
-    QColor primaryGradTop;
-    QColor primaryGradBottom;
+// Colour tokens. Names say where they are used; the tables in theme.cpp are
+// the only place with hex values.
+enum class C : uint8_t {
+    None = 0, // "no colour" (no background, no border)
+    WindowBg,
+    Surface,      // message pane, popups' content
+    SurfaceHover, // hovered message row
+    Rail,         // workspace rail
+    Sidebar,
+    SidebarText,
+    SidebarTextMuted,
+    SidebarHover,
+    SidebarSelected,
+    SidebarSelectedText,
+    SidebarScrollbar, // chats-list thumb (nav.scrollThumb)
+    Text,
+    TextMuted,
+    TextFaint,
+    Link,
+    Accent,
+    AccentHover,
+    AccentText, // text on Accent
+    Border,
+    BorderStrong,
+    Hover,   // generic hover wash (buttons on Surface)
+    Pressed, // generic pressed wash
+    Selection,
+    Caret,
+    FocusRing,
+    Badge,
+    BadgeText,
+    PopupBg,
+    PopupBorder,
+    Shadow,
+    TooltipBg,
+    TooltipText,
+    Scrollbar,
+    ScrollbarHover,
+    InputBg,
+    InputBorder,
+    InputBorderFocus,
+    Placeholder,
+    CodeBg,
+    CodeText,
+    MentionBg,
+    MentionText,
+    MentionSelfBg, // a mention of me, @here/@channel, my usergroup (yellow)
+    Danger,
+    Online,
+    // Form controls and dialogs (Settings): the form palette, so every
+    // dialog reads the same (surface.raised/sunken/highlight, the divider
+    // pair, text.primary/secondary/tertiary, …).
+    FormBg,              // dialog card, inputs, secondary buttons
+    FormSunken,          // section list, secondary button hover
+    FormHighlight,       // dialog header, hovered section / icon button
+    FormHighlightStrong, // selected section, pressed secondary button
+    FormDivider,         // header rule, section list edge, framed boxes
+    FormDividerStrong,   // dialog border, checkbox/radio/spin box border
+    FormText,
+    FormTextMuted, // hints, captions
+    FormTextFaint, // "Last checked", hover border of indicators
+    FormLink,
+    FormError,   // red warning text
+    FormWarning, // amber advisory text
+    FieldBorder, // text fields, dropdowns, the glossary
+    FieldBorderFocus,
+    FieldWell, // inside a checkbox / radio / spin box
+    DangerFill,
+    DangerFillHover,
+    BannerBg, // "applied the next time msga starts"
+    BannerBorder,
+    BannerText,
+    UpdateBannerBg, // updateBanner.*: the update bar
+    UpdateBannerBorder,
+    UpdateBannerText,
+    TitleBar, // titleBar.bg / controlDefault: the palette's, a custom theme's pins
+    TitleBarControl,
+    // The icon/composer/badge tokens the shell paints with
+    // (icon.starred, composer.toolbarIcon(Active), composer.dropArrow,
+    // badge.activity, presence.away / phantom, editBanner.accent).
+    IconStarred,
+    ComposerIcon,
+    ComposerIconActive,
+    DropArrow,
+    BadgeActivity,
+    PresenceAway,
+    PresencePhantom,
+    BannerAccent,
+    ChipBg, // composer.attachmentChip*: pending attachment cards
+    ChipBorder,
+    OverlayBg, // composer.attachmentOverlay*: the name plates on them
+    OverlayText,
+    // The rest of the palette that dialogs, toolbars, menus, cards and
+    // message rows paint with.
+    AccentPressed,  // accent.pressed (follows the palette, like Accent)
+    AccentSubtle,   // accent.subtleBg (follows the palette)
+    FormIcon,       // icon.def
+    FormIconStrong, // icon.strong
+    OnDarkDim,      // text.onDarkDim (on TooltipBg)
+    RowHover,       // message.hover (toolbar button wash)
+    FileChipBg,     // message.fileChipBg
+    FileChipBorder,
+    FileNameDim, // message.fileNameDim
+    ReplyLink,   // message.replyLink
+    TableBorder, // message.tableBorder
+    TableHeaderBg,
+    TableRowRule,
+    ViewerBackdrop, // surface.viewerBackdrop
+    PinnedBg,       // message.pinnedBg
+    ReminderBg,     // message.reminderBg
+    MenuBg,         // contextMenu.bg
+    MenuText,
+    MenuDanger,
+    MenuHover,
+    MenuSeparator,
+    DividerSubtle, // divider.subtle: the rule under macOS's unified header
+    // Progress marks (a job's ring, its bar): the accent in light (it follows
+    // the palette); in dark a light blue, the dark accent being too faint
+    // on the dark surface for a state mark.
+    Progress,
+    Count
 };
 
-struct SurfaceColors {
-    QColor content;         // main message list background
-    QColor raised;          // popups, tooltips, dropdowns
-    QColor sunken;          // code blocks, inset areas
-    QColor overlay;         // semi-transparent modal backdrop
-    QColor viewerBackdrop;  // near-opaque backdrop of the full-window image viewer
-    QColor viewerBtnHover;  // hovered action button on the viewer backdrop
-    QColor highlight;       // hover on light background
-    QColor highlightStrong; // pressed / stronger highlight
+// Metrics (logical px), shared by both variants.
+enum class M : uint8_t {
+    RadiusS,
+    RadiusM,
+    RadiusL,
+    SpaceXS,
+    SpaceS,
+    SpaceM,
+    SpaceL,
+    SpaceXL,
+    ControlH,   // buttons, sidebar rows
+    ScrollbarW, // thumb width (widens on hover)
+    Count
 };
 
-struct TextColors {
-    QColor primary;      // main body copy
-    QColor documentBody; // long-form document copy (canvas) — softer than primary
-    QColor secondary;    // subdued (timestamps, captions)
-    QColor tertiary;     // placeholder, hints, very dimmed
-    QColor onDark;       // text on dark backgrounds
-    QColor onDarkDim;    // subdued text on dark backgrounds
-    QColor link;         // hyperlinks
-    QColor danger;       // error / destructive text
-    QColor warning;      // warning-context text
+// Font roles → text::Style (size scaled by the OS text-size preference).
+// Control (13), ControlBold (13 semibold), Heading (14 semibold), DialogTitle
+// (15 semibold) and Field (14) are the dialogs' form sizes.
+enum class Font : uint8_t {
+    Small,
+    SmallBold,
+    Body,
+    BodyBold,
+    Title,
+    Mono,
+    Caption,
+    Control,
+    ControlBold,
+    Heading,
+    DialogTitle,
+    Field,
+    // The sidebar/badge faces: demiBold, the section
+    // label (0.82, DemiBold / Bold), countBadge (0.78 bold), youLabel (0.88).
+    BodySemibold,
+    Section,
+    SectionBold,
+    CountBadge,
+    YouLabel,
+    TileBold,      // the group-DM tile's count (0.38 of its 20 px)
+    HeaderTitle,   // the conversation header's name (fonts.xxl, 600)
+    UnifiedTitle,  // …and the macOS unified header's, the workspace's there (fonts.xl, 600)
+    TabBold,       // the active Messages / canvas tab (fonts.md, bold)
+    Tiny,          // fonts.xs: "Also send to channel"
+    PlateName,     // fonts.sm semibold: attachment chip names
+    SmallSemibold, // fonts.caption 600: "Editing message"
+    CanvasTitle,   // the canvas page's title line (28 px bold)
+    Count
 };
 
-struct AccentColors {
-    QColor def;      // primary button / brand accent
-    QColor hover;    // hovered primary button
-    QColor pressed;  // pressed primary button
-    QColor dark;     // darker accent (secondary use)
-    QColor text;     // text on accent-coloured surface
-    QColor subtleBg; // very light accent-tinted background
+Color       color(C c);
+// A token in a given variant regardless of the current one (theme previews).
+Color       colorIn(C c, bool dark);
+// The system's text-selection highlight: the OS accent colour, a default
+// blue where the OS reports none. Selected text is drawn white on it.
+Color       systemHighlight();
+float       metric(M m);
+text::Style font(Font f, C color = C::Text);
+
+// A style for a size given in pixels (13, 14, …):
+// Body scaled by px / 15, so it follows the text-size preference too.
+text::Style pxFont(float px, text::Weight w, Color c);
+
+// Sentinel colours for text::AttributedText handed to Label/TextEdit:
+// themed(C::Link) is resolved when the layout is built, so rich text follows
+// theme switches too. resolve() maps a sentinel to the live colour and
+// passes ordinary colours through (a sentinel has alpha 0 and a marker byte).
+Color themed(C c);
+// A raw colour per theme, for values the token table doesn't
+// carry (message.* tints); resolved now, not a sentinel.
+Color byTheme(uint32_t dark, uint32_t light);
+Color resolve(Color c);
+// Resolves colour and background sentinels in every span.
+void  resolveSpans(text::AttributedText &t);
+
+// ── Palettes ────────────────────────────────────────────────────────────────
+// The chrome colour sets of the theme presets (Settings → Color
+// theme): rail, sidebar, selection pill and accent over light or dark content.
+// Each content mode keeps its own pick; the content tokens stay as tabled.
+enum class Palette : uint8_t { Purple, Charcoal, Blue, Green, Custom, Count };
+
+// A user-defined palette in Slack's shape: four colours and the switches.
+struct CustomPalette {
+    Color primary         = 0xff3f0e40; // the rail
+    Color highlight1      = 0xff3f0e40; // selection pill and accent
+    Color highlight2      = 0xff2bac76; // presence dot
+    Color important       = 0xffcd2553; // mention badge
+    int   brightness      = 6;          // 0–10, 6 = the rail as designed
+    bool  sidebarInverted = true;       // a dark rail over light content
+    bool  gradient        = true;       // kept for Slack round trips; drawn flat
+    // Pins a legacy Slack theme string names outright; 0 = derive: menu_bg / hover_item,
+    // active_item_text, text_color, top_nav_bg, top_nav_text.
+    Color itemHover = 0, itemSelText = 0, itemText = 0, titleBarBg = 0, titleBarText = 0;
 };
 
-struct BadgeColors {
-    QColor unread;   // unread message count badge
-    QColor mention;  // @mention badge (important: DMs + mentions — red)
-    QColor activity; // non-important unread activity dot (blue)
+// Everything a preview card paints for one palette in one mode.
+struct PaletteColors {
+    Color rail, sidebar, bubble, hover, pill, pillInk, text, textDim, scrollThumb;
+    Color accent, accentHover, accentPressed, accentSubtle, online, badge;
+    Color titleBar, titleBarControl; // the rail and the dim text unless pinned
 };
 
-struct PresenceColors {
-    QColor online;
-    QColor away;
-    QColor phantom; // self-only: would be active, but no official client is connected
-};
+// The picks; defaults are Purple (light) and Charcoal (dark). Call
+// App::restyle() afterwards to repaint.
+void                 setPalette(bool dark, Palette p);
+Palette              palette(bool dark);
+void                 setCustomPalette(const CustomPalette &c);
+const CustomPalette &customPalette();
+PaletteColors        paletteColors(Palette p, bool dark);
+// "#3f0e40" ↔ Color (for settings files); false/0 on garbage. hexColor is
+// gfx's.
+bool                 parseHexColor(std::string_view s, Color *out);
 
-struct MessageColors {
-    QColor hover;              // message row hover
-    QColor mentionBg;          // @mention chip background — someone else
-    QColor mentionSelfBg;      // @mention chip background — the authed user (yellow)
-    QColor mentionText;        // @mention chip text (both variants)
-    QColor codeBlockBg;        // inline/block code background
-    QColor codeBlockBorder;    // code block border / blockquote bar
-    QColor codeText;           // code font colour
-    QColor quoteBorder;        // blockquote left bar
-    QColor attachmentBg;       // file/link preview card background
-    QColor attachmentBorder;   // attachment card border
-    QColor attachmentDismiss;  // dismiss "×" button color
-    QColor pinnedBg;           // pinned message row tint
-    QColor reminderBg;         // "reminder set" message row tint (light blue)
-    QColor reminderText;       // reminder banner text/icon ("Due …")
-    QColor fileChipBg;         // non-image file chip background
-    QColor fileChipBorder;     // file chip border
-    QColor fileNameDim;        // filename label in image section
-    QColor imagePlaceholderBg; // loading-image placeholder fill
-    QColor imagePlaceholderBorder;
-    QColor replyBarHover; // reply bar hover background
-    QColor replyBarHoverBorder;
-    QColor replyLink;           // "N replies" link color
-    QColor appBadgeBg;          // "APP" tag background next to bot names
-    QColor appBadgeText;        // "APP" tag text
-    QColor extBadgeBg;          // "EXT" tag background next to external (Slack Connect) users
-    QColor extBadgeText;        // "EXT" tag text
-    int    avatarHslSaturation; // generated avatar HSL saturation
-    int    avatarHslLightness;
-};
+using gfx::hexColor;
 
-struct ComposerColors {
-    QColor bg;
-    QColor border;
-    QColor borderFocus;
-    QColor toolbarBg;
-    QColor toolbarBorder;
-    QColor toolbarIcon;
-    QColor toolbarIconActive;
-    QColor attachmentChipBg;
-    QColor attachmentChipBorder;
-    QColor attachmentOverlayBg;   // semitransparent plate behind name/size on image chips
-    QColor attachmentOverlayText; // text on attachmentOverlayBg
-    QColor dropArrow;             // drop-menu chevron (empty composer)
-    QColor dropArrowActive;
-};
-
-struct EditBannerColors {
-    QColor bg;
-    QColor border;
-    QColor accent;
-    QColor text;
-};
-
-struct DangerColors {
-    QColor def;
-    QColor hover;
-    QColor icon;
-    QColor text;
-};
-
-struct DividerColors {
-    QColor def;    // standard section divider
-    QColor strong; // popup/card outer border
-    QColor subtle; // very subtle separation
-};
-
-struct IconColors {
-    QColor def;     // standard icon
-    QColor strong;  // dark icon (context menu items)
-    QColor accent;  // accent-coloured icon
-    QColor danger;  // destructive icon
-    QColor onDark;  // icon on dark background
-    QColor warning; // icon in warning context
-    QColor starred; // starred-state icon (golden amber)
-    QColor dim;     // very subdued icon
-};
-
-struct TitleBarColors {
-    QColor bg;
-    QColor controlDefault;
-    QColor controlHover;
-    QColor controlClose;
-};
-
-struct LoaderColors {
-    QColor a, b, c, d;
-};
-
-struct ContextMenuColors {
-    QColor bg;
-    QColor border;
-    QColor itemHover;
-    QColor itemText;
-    QColor itemTextDim;
-    QColor dangerText;
-};
-
-struct TooltipColors {
-    // Bubble fill (text on it is text.onDark). Deliberately near-black in EVERY
-    // theme, including dark ones — a tooltip is a floating dark chip, not a
-    // content surface, so it must not follow surface.* when the content darkens.
-    QColor bg;
-};
-
-struct FontSizes {
-    int xs;      // 10 — attachment labels
-    int sm;      // 11 — small labels
-    int caption; // 12 — captions, groupbox titles, banner labels
-    int md;      // 13 — composer, mention popup
-    int base;    // 14 — search, conv list
-    int lg;      // 15 — thread header, welcome
-    int xl;      // 16 — section headers
-    int xxl;     // 18 — workspace icon label
-    int xxxl;    // 24 — dialog titles
-};
-
-struct FontScales {
-    double messageBold;  // 1.15 — bold spans
-    double messageSmall; // 0.88 — blockquote body
-    double timestamp;    // 0.85 — message timestamps
-    double secondary;    // 0.82 — secondary text
-    double badge;        // 0.78 — unread badge numerals
-    double micro;        // 0.75 — smallest painted labels
-};
-
-struct Spacing {
-    int xs;  // 2
-    int sm;  // 4
-    int md;  // 8
-    int lg;  // 12
-    int xl;  // 16
-    int xxl; // 24
-};
-
-// ── Main theme struct ─────────────────────────────────────────────────────────
-
-struct Theme {
-    NavColors         nav;
-    SurfaceColors     surface;
-    TextColors        text;
-    AccentColors      accent;
-    BadgeColors       badge;
-    PresenceColors    presence;
-    MessageColors     message;
-    ComposerColors    composer;
-    EditBannerColors  editBanner;
-    EditBannerColors  updateBanner;
-    DangerColors      danger;
-    DividerColors     divider;
-    IconColors        icon;
-    TitleBarColors    titleBar;
-    LoaderColors      loader;
-    ContextMenuColors contextMenu;
-    TooltipColors     tooltip;
-    FontSizes         fonts;
-    FontScales        fontScales;
-    Spacing           spacing;
-
-    // Workspace-switcher derived colors (computed per workspace from teamId hash)
-    int workspaceHslSaturation; // 65
-    int workspaceHslLightness;  // 42
-};
-
-// ── Theme registry ────────────────────────────────────────────────────────────
-
-// A selectable color theme. `id` is the persisted QSettings value
-// ("appearance/theme"); the display name is translated at the UI site.
-struct ThemeInfo {
-    QString      id;
-    const Theme *theme;
-};
-
-// All built-in themes, in display order. First entry is the default (purple).
-const std::vector<ThemeInfo> &availableThemes();
-
-// nullptr for unknown ids (callers fall back to defaultTheme()).
-const Theme *themeById(const QString &id);
-
-// ── Access ────────────────────────────────────────────────────────────────────
-
-// Returns the currently active theme. Call via the Th::c() shorthand below.
-const Theme &current();
-
-// Shorthand: Th::c().text.primary
-inline const Theme &c() {
-    return current();
-}
-
-// A vertical gradient spanning the full height of the sidebar column, mapped
-// into `widget`'s local coordinates. Because it's anchored to the top-level
-// window, all sidebar widgets (workspace rail, conversation list, footer) share
-// one continuous gradient — and it stays fixed while list rows scroll.
-QLinearGradient navGradient(const QWidget *widget, const QColor &top, const QColor &bottom);
-
-// Formats a QColor for embedding in a Qt stylesheet string.
-// Opaque → "#RRGGBB"; with alpha → "rgba(r,g,b,A)" (A is 0–255, not 0.0–1.0).
-QString qss(const QColor &color);
-
-// Global application stylesheet built from the active theme.
-// Apply via qApp->setStyleSheet(Th::globalQss()) and re-apply on themeChanged.
-// Covers only things that can't be done per-widget (QToolTip, etc.).
-QString globalQss();
-
-// Our scrollbar look: thin rounded handle (`divider.strong`, hover
-// `text.secondary`), transparent track, no arrows — vertical + horizontal.
-// Shared by every content scroll area (canvas, settings, search). Re-emit on
-// themeChanged where it's applied. `width` is the bar thickness, `radius` the
-// handle corner radius.
-QString scrollBarQss(int width = 8, int radius = 4);
-
-// Themed stock form controls. Native QRadioButton/QCheckBox/QSpinBox draw their
-// indicator/field from the OS palette — light-mode white regardless of the
-// theme — so any dialog using them must apply these instead of hand-rolling a
-// color/font-only stylesheet. `fontPx` <= 0 keeps the widget's inherited font
-// size. Re-apply on themeChanged.
-QString radioQss(int fontPx = 0);
-QString checkBoxQss(int fontPx = 0);
-QString spinBoxQss(int fontPx = 0);
-
-// Stylesheet for stock Qt dialogs we don't custom-paint (the widget-based
-// QFileDialog fallback). Their text/selection colors come from the OS palette,
-// which is unreadable whenever the OS theme's lightness differs from the app
-// theme's. Must be a stylesheet, not a QPalette: any ancestor `QWidget {
-// background: … }` rule makes QStyleSheetStyle::polish assign each child its
-// own palette rebuilt from the app palette, silently discarding one set with
-// setPalette().
-QString stockDialogQss();
-
-} // namespace Th
+} // namespace ui

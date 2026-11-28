@@ -1,0 +1,427 @@
+--- a/csutil.cxx
++++ b/csutil.cxx
+@@ -74,7 +74,9 @@
+ #include <cstring>
+ #include <cstdio>
+ #include <cctype>
++#if !defined(HUNSPELL_NO_IOSTREAM) // msga modification
+ #include <sstream>
++#endif
+ #if __cplusplus >= 202002L
+ #include <bit>
+ #endif
+@@ -91,7 +93,14 @@
+ #ifdef OPENOFFICEORG
+ #include <unicode/uchar.h>
+ #else
+-#ifndef MOZILLA_CLIENT
++#if defined(HUNSPELL_HOST_UNICODE) // msga modification
++// msga modification (HUNSPELL_HOST_UNICODE): the case and letter lookups are
++// implemented by the host app with the C library's wctype tables, already in the
++// binary, in place of the 384 KB utf_tbl of utf_info.hxx (not vendored).
++unsigned short hunspell_host_toupper(unsigned short c);
++unsigned short hunspell_host_tolower(unsigned short c);
++int hunspell_host_isalpha(unsigned short c);
++#elif !defined(MOZILLA_CLIENT)
+ #include "utf_info.hxx"
+ #endif
+ #endif
+@@ -104,6 +113,11 @@
+ using namespace mozilla;
+ #endif
+ 
++#if defined(HUNSPELL_NO_IOSTREAM) // msga modification
++FILE* myfopen(const char* path, const char* mode) {
++  return fopen(path, mode);
++}
++#else
+ void myopen(std::ifstream& stream, const char* path, std::ios_base::openmode mode)
+ {
+ #if defined(_WIN32) && defined(_MSC_VER)
+@@ -123,6 +137,7 @@
+ #endif
+   stream.open(path, mode);
+ }
++#endif
+ 
+ std::string& u16_u8(std::string& dest, const std::vector<w_char>& src) {
+   dest.clear();
+@@ -312,6 +327,17 @@
+     return ret;
+   }
+ 
++#if defined(HUNSPELL_NO_IOSTREAM) // msga modification
++  size_t start = 0;
++  while (start < text.size()) {
++    size_t end = text.find(breakchar, start);
++    if (end == std::string::npos)
++      end = text.size();
++    if (end > start)
++      ret.push_back(text.substr(start, end - start));
++    start = end + 1;
++  }
++#else
+   std::stringstream ss(text);
+   std::string tok;
+   while(std::getline(ss, tok, breakchar)) {
+@@ -319,6 +345,7 @@
+       ret.push_back(tok);
+     }
+   }
++#endif
+ 
+   return ret;
+ }
+@@ -2493,7 +2520,9 @@
+ #ifdef OPENOFFICEORG
+   return static_cast<unsigned short>(u_toupper(c));
+ #else
+-#ifdef MOZILLA_CLIENT
++#if defined(HUNSPELL_HOST_UNICODE) // msga modification
++  return hunspell_host_toupper(c);
++#elif defined(MOZILLA_CLIENT)
+   return ToUpperCase((char16_t)c);
+ #else
+   return utf_tbl[c].cupper;
+@@ -2510,7 +2539,9 @@
+ #ifdef OPENOFFICEORG
+   return static_cast<unsigned short>(u_tolower(c));
+ #else
+-#ifdef MOZILLA_CLIENT
++#if defined(HUNSPELL_HOST_UNICODE) // msga modification
++  return hunspell_host_tolower(c);
++#elif defined(MOZILLA_CLIENT)
+   return ToLowerCase((char16_t)c);
+ #else
+   return utf_tbl[c].clower;
+@@ -2521,6 +2552,8 @@
+ int unicodeisalpha(unsigned short c) {
+ #ifdef OPENOFFICEORG
+   return u_isalpha(c);
++#elif defined(HUNSPELL_HOST_UNICODE) // msga modification
++  return hunspell_host_isalpha(c);
+ #else
+   return utf_tbl[c].cletter;
+ #endif
+--- a/csutil.hxx
++++ b/csutil.hxx
+@@ -75,7 +75,11 @@
+ 
+ // First some base level utility routines
+ 
++#if defined(HUNSPELL_NO_IOSTREAM) // msga modification
++#include <cstdio>
++#else
+ #include <fstream>
++#endif
+ #include <string>
+ #include <vector>
+ #include <cassert>
+@@ -127,9 +131,16 @@
+ #define FORBIDDENWORD 65510
+ #define ONLYUPCASEFLAG 65511
+ 
++#if defined(HUNSPELL_NO_IOSTREAM) // msga modification
++// msga modification (HUNSPELL_NO_IOSTREAM): the dictionary files are read with
++// C stdio instead of std::ifstream. iostreams were the only reason the static
++// Linux binary carried libstdc++'s locale and stream machinery (~350 KB).
++LIBHUNSPELL_DLL_EXPORTED FILE* myfopen(const char* path, const char* mode);
++#else
+ // fix long pathname problem of WIN32 by using w_char std::fstream::open override
+ LIBHUNSPELL_DLL_EXPORTED void myopen(std::ifstream& stream, const char* path,
+                                      std::ios_base::openmode mode);
++#endif
+ 
+ // convert UTF-16 characters to UTF-8
+ LIBHUNSPELL_DLL_EXPORTED std::string& u16_u8(std::string& dest,
+--- a/filemgr.cxx
++++ b/filemgr.cxx
+@@ -80,6 +80,55 @@
+   return -1;
+ }
+ 
++#if defined(HUNSPELL_NO_IOSTREAM) // msga modification
++// msga modification (HUNSPELL_NO_IOSTREAM): std::getline() over a C stream.
++// Like std::getline it strips only the '\n', and a last line without one still
++// counts.
++static bool read_line(FILE* f, std::string& dest) {
++  dest.clear();
++  char buf[4096];
++  bool any = false;
++  while (fgets(buf, sizeof buf, f)) {
++    any = true;
++    size_t n = strlen(buf);
++    if (n && buf[n - 1] == '\n') {
++      dest.append(buf, n - 1);
++      return true;
++    }
++    dest.append(buf, n);
++  }
++  return any;
++}
++
++FileMgr::FileMgr(const char* file, const char* key) : fin(NULL), hin(NULL), linenum(0) {
++  in[0] = '\0';
++
++  if (!file || !strlen(file))
++    return;
++  fin = myfopen(file, "r");
++  if (!fin) {
++    // check hzipped file
++    std::string st(file);
++    st.append(HZIP_EXTENSION);
++    hin = new Hunzip(st.c_str(), key);
++  }
++  if (!fin && !hin->is_open())
++    fail(MSG_OPEN, file);
++}
++
++FileMgr::~FileMgr() {
++  if (fin)
++    fclose(fin);
++  delete hin;
++}
++
++bool FileMgr::getline(std::string& dest) {
++  bool ret = false;
++  ++linenum;
++  if (fin) {
++    ret = read_line(fin, dest);
++  } else if (hin && hin->is_open()) {
++#else
+ FileMgr::FileMgr(const char* file, const char* key) : hin(NULL), linenum(0) {
+   in[0] = '\0';
+ 
+@@ -106,6 +155,7 @@
+   if (fin.is_open()) {
+     ret = static_cast<bool>(std::getline(fin, dest));
+   } else if (hin && hin->is_open()) {
++#endif
+     ret = hin->getline(dest);
+   }
+   if (!ret) {
+--- a/filemgr.hxx
++++ b/filemgr.hxx
+@@ -75,11 +75,17 @@
+ #include "hunzip.hxx"
+ #include <cstdio>
+ #include <string>
++#if !defined(HUNSPELL_NO_IOSTREAM) // msga modification
+ #include <fstream>
++#endif
+ 
+ class FileMgr {
+  protected:
++#if defined(HUNSPELL_NO_IOSTREAM) // msga modification
++  FILE* fin;
++#else
+   std::ifstream fin;
++#endif
+   Hunzip* hin;
+   char in[BUFSIZE + 50];  // input buffer
+   int fail(const char* err, const char* par);
+--- a/hashmgr.cxx
++++ b/hashmgr.cxx
+@@ -73,7 +73,9 @@
+ #include <cstdio>
+ #include <cctype>
+ #include <limits>
++#if !defined(HUNSPELL_NO_IOSTREAM) // msga modification
+ #include <sstream>
++#endif
+ #if __cplusplus >= 202002L
+ #include <bit>
+ #endif
+--- a/hunspell.cxx
++++ b/hunspell.cxx
+@@ -1059,9 +1059,13 @@
+     return slst;
+ 
+   // process XML input of the simplified API (see manual)
++  // msga modification (HUNSPELL_NO_XML): compiled out, which leaves the whole
++  // morphology/XML API (spellml, analyze, stem, generate) unreachable.
++#ifndef HUNSPELL_NO_XML
+   if (word.compare(0, sizeof(SPELL_XML) - 3, SPELL_XML, sizeof(SPELL_XML) - 3) == 0) {
+     return spellml(word);
+   }
++#endif
+   if (utf8) {
+     if (word.size() >= MAXWORDUTF8LEN)
+       return slst;
+--- a/hunzip.cxx
++++ b/hunzip.cxx
+@@ -42,6 +42,15 @@
+ #include "hunzip.hxx"
+ #include "csutil.hxx"
+ 
++#if defined(HUNSPELL_NO_IOSTREAM) // msga modification
++// msga modification (HUNSPELL_NO_IOSTREAM): the .hz reader on a C stream. Each
++// HUNZIP_READ() below is a fread() that must fill the whole buffer, like
++// istream::read(); getbuf() is the one place that accepts a short read.
++#define HUNZIP_READ(buf, n) (fread((buf), 1, size_t(n), fin) == size_t(n))
++#else
++#define HUNZIP_READ(buf, n) (fin.read((buf), (n)))
++#endif
++
+ #define CODELEN 65536
+ #define BASEBITREC 5000
+ 
+@@ -73,12 +82,18 @@
+   if (filename.empty())
+     return -1;
+ 
++#if defined(HUNSPELL_NO_IOSTREAM) // msga modification
++  fin = myfopen(filename.c_str(), "rb");
++  if (!fin)
++    return -1;
++#else
+   myopen(fin, filename.c_str(), std::ios_base::in | std::ios_base::binary);
+   if (!fin.is_open())
+     return -1;
++#endif
+ 
+   // read magic number
+-  if (!fin.read(in, 3) ||
++  if (!HUNZIP_READ(in, 3) ||
+       !(strncmp(MAGIC, in, MAGICLEN) == 0 ||
+         strncmp(MAGIC_ENCRYPT, in, MAGICLEN) == 0)) {
+     return fail(MSG_FORMAT, filename);
+@@ -89,7 +104,7 @@
+     unsigned char cs;
+     if (!key)
+       return fail(MSG_KEY, filename);
+-    if (!fin.read(reinterpret_cast<char*>(c), 1))
++    if (!HUNZIP_READ(reinterpret_cast<char*>(c), 1))
+       return fail(MSG_FORMAT, filename);
+     for (cs = 0; *enc; enc++)
+       cs ^= *enc;
+@@ -100,7 +115,7 @@
+     key = NULL;
+ 
+   // read record count
+-  if (!fin.read(reinterpret_cast<char*>(c), 2))
++  if (!HUNZIP_READ(reinterpret_cast<char*>(c), 2))
+     return fail(MSG_FORMAT, filename);
+ 
+   if (key) {
+@@ -118,7 +133,7 @@
+   // read codes
+   for (i = 0; i < n; i++) {
+     unsigned char l;
+-    if (!fin.read(reinterpret_cast<char*>(c), 2))
++    if (!HUNZIP_READ(reinterpret_cast<char*>(c), 2))
+       return fail(MSG_FORMAT, filename);
+     if (key) {
+       if (*(++enc) == '\0')
+@@ -128,14 +143,14 @@
+         enc = key;
+       c[1] ^= *enc;
+     }
+-    if (!fin.read(reinterpret_cast<char*>(&l), 1))
++    if (!HUNZIP_READ(reinterpret_cast<char*>(&l), 1))
+       return fail(MSG_FORMAT, filename);
+     if (key) {
+       if (*(++enc) == '\0')
+         enc = key;
+       l ^= *enc;
+     }
+-    if (!fin.read(in, (l >> 3) + 1))
++    if (!HUNZIP_READ(in, (l >> 3) + 1))
+       return fail(MSG_FORMAT, filename);
+     if (key)
+       for (j = 0; j <= (l >> 3); j++) {
+@@ -167,6 +182,10 @@
+ }
+ 
+ Hunzip::~Hunzip() {
++#if defined(HUNSPELL_NO_IOSTREAM) // msga modification
++  if (fin)
++    fclose(fin);
++#endif
+ }
+ 
+ int Hunzip::getbuf() {
+@@ -174,8 +193,12 @@
+   int o = 0;
+   do {
+     if (inc == 0) {
++#if defined(HUNSPELL_NO_IOSTREAM) // msga modification
++      inbits = int(fread(in, 1, BUFSIZE, fin) << 3);
++#else
+       fin.read(in, BUFSIZE);
+       inbits = int(fin.gcount() << 3);
++#endif
+     }
+     for (; inc < inbits; inc++) {
+       int b = (in[inc >> 3] & (1 << (7 - (inc & 7)))) ? 1 : 0;
+@@ -183,7 +206,12 @@
+       p = dec[p].v[b];
+       if (p == 0) {
+         if (oldp == lastbit) {
++#if defined(HUNSPELL_NO_IOSTREAM) // msga modification
++          fclose(fin);
++          fin = NULL;
++#else
+           fin.close();
++#endif
+           // add last odd byte
+           if (dec[lastbit].c[0])
+             out[o++] = dec[lastbit].c[1];
+@@ -240,7 +268,7 @@
+     }
+     if (++outc == bufsiz) {
+       outc = 0;
+-      bufsiz = fin.is_open() ? getbuf() : -1;
++      bufsiz = is_open() ? getbuf() : -1; // msga modification: was fin.is_open()
+     }
+   }
+   if (right)
+--- a/hunzip.hxx
++++ b/hunzip.hxx
+@@ -44,7 +44,11 @@
+ #include "hunvisapi.h"
+ 
+ #include <cstdio>
++#if defined(HUNSPELL_NO_IOSTREAM) // msga modification
++#include <string> // came in through <fstream>
++#else
+ #include <fstream>
++#endif
+ #include <vector>
+ 
+ #define BUFSIZE 65536
+@@ -63,7 +67,11 @@
+ class LIBHUNSPELL_DLL_EXPORTED Hunzip {
+  protected:
+   std::string filename;
++#if defined(HUNSPELL_NO_IOSTREAM) // msga modification
++  FILE* fin = NULL;
++#else
+   std::ifstream fin;
++#endif
+   int bufsiz, lastbit, inc, inbits, outc;
+   std::vector<bit> dec;     // code table
+   char in[BUFSIZE];         // input buffer
+@@ -78,7 +86,11 @@
+   Hunzip(const Hunzip&) = delete;
+   Hunzip& operator=(const Hunzip&) = delete;
+   ~Hunzip();
++#if defined(HUNSPELL_NO_IOSTREAM) // msga modification
++  bool is_open() { return fin != NULL; }
++#else
+   bool is_open() { return fin.is_open(); }
++#endif
+   bool getline(std::string& dest);
+ };
+ 
+--- a/hunvisapi.h.in
++++ b/hunvisapi.h
+@@ -9,7 +9,7 @@
+ #  else
+ #    define LIBHUNSPELL_DLL_EXPORTED __declspec(dllimport)
+ #  endif
+-#elif defined(BUILDING_LIBHUNSPELL) && @HAVE_VISIBILITY@
++#elif defined(BUILDING_LIBHUNSPELL) && 1
+ #  define LIBHUNSPELL_DLL_EXPORTED __attribute__((__visibility__("default")))
+ #else
+ #  define LIBHUNSPELL_DLL_EXPORTED

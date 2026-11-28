@@ -1,0 +1,156 @@
+{
+  "gifs": "gifs",
+  "workspace": { "id": "T0LUMEN", "name": "Lumen Studio", "icon": "workspace.png" },
+  "me": "U0ALEX",
+  "startConversation": "C0DESIGN",
+
+  "users": [
+    { "id": "U0ALEX",   "name": "alex",      "displayName": "Alex Kim",         "title": "Product lead",        "avatar": "avatars/alex.png",   "active": true,  "tz": "+02:00", "email": "alex@lumen.studio" },
+    { "id": "U0MIRA",   "name": "mira",      "displayName": "Mira Okafor",      "title": "Design lead",         "avatar": "avatars/mira.png",   "active": true,  "tz": "+01:00", "status": { "emoji": "art", "text": "In Figma, ping if urgent" } },
+    { "id": "U0JONAS",  "name": "jonas",     "displayName": "Jonas Weber",      "title": "Backend engineer",    "avatar": "avatars/jonas.png",  "active": true,  "tz": "+02:00" },
+    { "id": "U0PRIYA",  "name": "priya",     "displayName": "Priya Natarajan",  "title": "Frontend engineer",   "avatar": "avatars/priya.png",  "active": false, "tz": "+05:30", "status": { "emoji": "palm_tree", "text": "Out until Thursday" } },
+    { "id": "U0TOMAS",  "name": "tomas",     "displayName": "Tomás Ferreira",   "title": "Data & analytics",    "avatar": "avatars/tomas.png",  "active": true,  "tz": "-03:00" },
+    { "id": "U0LENA",   "name": "lena",      "displayName": "Lena Sørensen",    "title": "Support & QA",        "avatar": "avatars/lena.png",   "active": true,  "tz": "+01:00", "admin": true },
+    { "id": "U0RAVI",   "name": "ravi",      "displayName": "Ravi Desai",       "title": "Mobile engineer",     "avatar": "avatars/ravi.png",   "active": false, "tz": "+05:30", "dnd": true },
+    { "id": "U0YUKI",   "name": "yuki",      "displayName": "Yuki Tanaka",      "title": "Marketing",           "avatar": "avatars/yuki.png",   "active": true,  "tz": "+09:00" },
+    { "id": "U0SAM",    "name": "sam",       "displayName": "Sam Rivera",       "title": "Founder",             "avatar": "avatars/sam.png",    "active": false, "tz": "-07:00", "owner": true, "admin": true },
+    { "id": "U0DEPLOY", "name": "deploybot", "displayName": "Deploybot",        "avatar": "avatars/deploybot.png", "bot": true }
+  ],
+
+  "conversations": [
+    { "id": "C0GENERAL",  "kind": "channel", "name": "general",      "topic": "Company-wide announcements and the occasional cat", "memberCount": 24, "starred": true },
+    { "id": "C0DESIGN",   "kind": "channel", "name": "design",       "topic": "Crits, Figma links and the Atlas 2.0 design system", "memberCount": 9,  "starred": true,
+      "canvas": { "title": "Design crit — week 38", "html": "canvases/design-crit.html" },
+      "bookmarks": [ { "title": "Atlas 2.0 in Figma", "link": "https://www.figma.com/file/atlas", "emoji": ":art:" },
+                     { "title": "", "link": "https://docs.lumen.studio/atlas?tab=1" } ] },
+    { "id": "C0ENG",      "kind": "channel", "name": "engineering",  "topic": "Backend, frontend, infra. Incidents go to #releases", "memberCount": 12, "unread": 3, "mentions": 1 },
+    { "id": "C0RELEASES", "kind": "channel", "name": "releases",     "topic": "Deploy notices from Deploybot · humans welcome",      "memberCount": 14, "unread": 1 },
+    { "id": "G0LAUNCH",   "kind": "private", "name": "launch-atlas", "topic": "Atlas 2.0 launch war room — 2 Oct",                  "memberCount": 6 },
+    { "id": "C0RANDOM",   "kind": "channel", "name": "random",       "topic": "Everything that is not work",                        "memberCount": 24 },
+    { "id": "D0MIRA",     "kind": "dm",      "user": "U0MIRA",  "unread": 2 },
+    { "id": "D0JONAS",    "kind": "dm",      "user": "U0JONAS" },
+    { "id": "D0LENA",     "kind": "dm",      "user": "U0LENA" },
+    { "id": "D0SAM",      "kind": "dm",      "user": "U0SAM" },
+    { "id": "G0TRIO",     "kind": "group",   "members": ["U0MIRA", "U0JONAS"] }
+  ],
+
+  "messages": [
+    { "conv": "C0GENERAL", "user": "U0SAM",  "time": "-4d 09:02", "text": "Morning all :wave: Quick reminder that the *Atlas 2.0* launch is on <!date^1759395600^{date_long}|2 October>. Everything launch-related lives in the war room now — ask <@U0ALEX> for an invite.", "reactions": [ { "name": "rocket", "users": ["U0MIRA", "U0JONAS", "U0LENA", "U0YUKI", "U0TOMAS"] } ], "pinned": true },
+    { "conv": "C0GENERAL", "user": "U0LENA", "time": "-4d 09:15", "text": "Support inbox is quiet for once. Enjoy it while it lasts :sweat_smile:" },
+    { "conv": "C0GENERAL", "user": "U0YUKI", "time": "-2d 08:40", "text": "Blog draft for the launch is ready for review: <https://figment.app/lumen/atlas-launch-post|Atlas 2.0 — one workspace for everything>. Comments welcome until Friday.",
+      "attachments": [ { "service": "Figment", "favicon": "icons/figment.png", "title": "Atlas 2.0 — one workspace for everything", "link": "https://figment.app/lumen/atlas-launch-post", "text": "Draft · 1,240 words · last edited by Yuki Tanaka", "color": "#7A4DFF", "image": "images/blog-hero.png" } ],
+      "reactions": [ { "name": "eyes", "users": ["U0ALEX", "U0MIRA"] } ] },
+    { "conv": "C0GENERAL", "user": "U0TOMAS", "time": "-1d 17:20", "text": "Week 37 numbers are in — best signup week so far :chart_with_upwards_trend:", "files": [ { "path": "images/atlas-dashboard.png", "name": "atlas-dashboard.png" } ],
+      "reactions": [ { "name": "tada", "users": ["U0SAM", "U0YUKI", "U0LENA", "U0MIRA", "U0JONAS", "U0ALEX"] }, { "name": "fire", "users": ["U0YUKI", "U0SAM"] } ] },
+    { "conv": "C0GENERAL", "user": "U0RAVI", "time": "+45m", "text": "Raw data if anyone wants to slice it differently", "files": [ { "path": "files/signups-week-37.csv" } ] },
+
+    { "conv": "C0DESIGN", "user": "U0MIRA", "time": "-3d 10:05", "text": "Palette v3 is out for review. Main change: primary moved from indigo to a slightly bluer violet so it holds up on the dark theme. Neutrals are untouched.",
+      "files": [ { "path": "images/palette-v3.png", "name": "palette-v3.png" } ],
+      "reactions": [ { "name": "heart", "users": ["U0ALEX", "U0PRIYA", "U0YUKI"] }, { "name": "art", "users": ["U0LENA"] } ],
+      "replies": [
+        { "user": "U0PRIYA", "time": "+22m", "text": "Contrast on `#6D5DF6` over `#F2F3F7` is 4.6:1 — passes AA for text, fails for small icons. Do we care?" },
+        { "user": "U0MIRA",  "time": "+9m",  "text": "Icons get the ink colour anyway, primary is only for fills and links. So no :slightly_smiling_face:" },
+        { "user": "U0ALEX",  "time": "+31m", "text": "Ship it. Can you update the tokens in the Figma library so <#C0ENG> can pull them?" },
+        { "user": "U0MIRA",  "time": "+4m",  "text": "Done — `atlas/color/primary` and friends are published :white_check_mark:" }
+      ] },
+    { "conv": "C0DESIGN", "user": "U0ALEX", "time": "-2d 14:12", "text": "Reminder for tomorrow's crit: we're looking at onboarding only. Bring one strong opinion each :grin:" },
+    { "conv": "C0DESIGN", "user": "U0MIRA", "time": "-1d 11:30", "text": "Proposal B for onboarding — three steps instead of five. The plan picker moves *before* the invite step, which is where we lose most people today.",
+      "files": [ { "path": "images/onboarding-flow-b.png", "name": "onboarding-flow-b.png" } ],
+      "reactions": [ { "name": "+1", "users": ["U0ALEX", "U0JONAS", "U0LENA", "U0TOMAS"] } ],
+      "replies": [
+        { "user": "U0TOMAS", "time": "+15m", "text": "Data agrees: 38% drop-off is on the invite step. Plan picker is only 9%." },
+        { "user": "U0JONAS", "time": "+40m", "text": "Backend is fine with either order, the invite endpoint doesn't care when it's called." },
+        { "user": "U0LENA",  "time": "+1h",  "text": "One thing from support: people expect to skip invites entirely. Can \"Invite team\" have a _Skip for now_?" }
+      ] },
+    { "conv": "C0DESIGN", "user": "U0PRIYA", "time": "-1d 15:48", "text": "Started on the new empty states. Sketch of the copy:\n> No projects yet. Create one, or import from your old tool — takes about a minute.\nToo chatty?", "edited": true,
+      "reactions": [ { "name": "+1", "users": ["U0MIRA"] } ] },
+    { "conv": "C0DESIGN", "user": "U0MIRA", "time": "09:12", "text": "Crit notes from yesterday are in the channel canvas. Action items are tagged with owners — tick yours off as you go.", "reactions": [ { "name": "pray", "users": ["U0ALEX", "U0PRIYA"] } ] },
+    { "conv": "C0DESIGN", "user": "U0YUKI", "time": "-35m", "text": "Can someone export the hero illustration at 2x for the blog post? PNG is fine :pray:" },
+
+    { "conv": "C0ENG", "user": "U0JONAS", "time": "-3d 09:30", "text": "Heads up: I'm moving the search index to the new cluster tonight. Expect ~10 min of stale results around 22:00 CEST." },
+    { "conv": "C0ENG", "user": "U0RAVI",  "time": "-3d 09:41", "text": "Does mobile need to do anything?" },
+    { "conv": "C0ENG", "user": "U0JONAS", "time": "-3d 09:43", "text": "Nope, same endpoints. Just don't ship a build that hard-codes result ordering :wink:" },
+    { "conv": "C0ENG", "user": "U0PRIYA", "time": "-2d 16:05", "text": "PR for the new tokens is up: <https://gitforge.dev/lumen/atlas-web/pull/1482|atlas-web#1482 — adopt palette v3 tokens>. Mostly mechanical, but please eyeball the dark theme.",
+      "attachments": [ { "service": "GitForge", "favicon": "icons/gitforge.png", "title": "#1482 adopt palette v3 tokens", "link": "https://gitforge.dev/lumen/atlas-web/pull/1482", "text": "+214 −198 · 31 files · 2 approvals required", "color": "#24292F" } ] },
+    { "conv": "C0ENG", "user": "U0JONAS", "time": "-1d 10:20", "text": "Quick one — the rate limiter now returns the reset time in the header. Client code should read it instead of guessing:\n```\nRetry-After: 12\nX-RateLimit-Reset: 1758445200\n```\nThe old 60-second guess is gone in `v2.0.0-rc.3`." },
+    { "conv": "C0ENG", "user": "U0TOMAS", "time": "-1d 18:02", "text": "Anyone else seeing the analytics worker restart every ~20 minutes since this morning?" },
+    { "conv": "C0ENG", "user": "U0JONAS", "time": "-1d 18:07", "text": "Yes — it's the memory limit, the new event batching keeps more in flight. Fix is in review." },
+    { "conv": "C0ENG", "user": "U0LENA",  "time": "-20m", "text": "<@U0ALEX> two customers asked whether Atlas 2.0 keeps the CSV export. Can we confirm before the blog post goes out?" },
+
+    { "conv": "C0RELEASES", "bot": { "name": "Deploybot", "avatar": "avatars/deploybot.png" }, "time": "-2d 22:04", "text": "",
+      "attachments": [ { "title": "search-indexer v3.1.0 → production", "color": "#3FCB8E", "text": "Rolled out to 12/12 nodes in 4m 12s. Triggered by <@U0JONAS>.", "fields": [ { "title": "Environment", "value": "production" }, { "title": "Duration", "value": "4m 12s" } ], "linkPreview": false } ] },
+    { "conv": "C0RELEASES", "bot": { "name": "Deploybot", "avatar": "avatars/deploybot.png" }, "time": "-1d 11:52", "text": "",
+      "attachments": [ { "title": "atlas-web v2.0.0-rc.3 → staging", "color": "#F5B942", "text": "Deployed. 2 smoke checks pending: `checkout-flow`, `invite-email`.", "fields": [ { "title": "Environment", "value": "staging" }, { "title": "Commit", "value": "`a41f9c2`" } ], "linkPreview": false } ] },
+    { "conv": "C0RELEASES", "user": "U0PRIYA", "time": "-1d 12:10", "text": "Smoke checks are green now, invite-email just needed the new template." },
+    { "conv": "C0RELEASES", "bot": { "name": "Deploybot", "avatar": "avatars/deploybot.png" }, "time": "-12m", "text": "",
+      "attachments": [ { "title": "analytics-worker v1.8.2 → production", "color": "#3FCB8E", "text": "Rolled out to 4/4 nodes. Memory limit raised to 2 GiB. Triggered by <@U0JONAS>.", "fields": [ { "title": "Environment", "value": "production" }, { "title": "Duration", "value": "1m 03s" } ], "linkPreview": false } ] },
+
+    { "conv": "G0LAUNCH", "user": "U0ALEX", "time": "-3d 13:00", "text": "War room is open. Checklist attached — owners, please tick your items here as you go.", "files": [ { "path": "files/atlas-launch-checklist.pdf" } ], "pinned": true },
+    { "conv": "G0LAUNCH", "user": "U0YUKI", "time": "-2d 09:05", "text": "Pricing page copy is approved by Sam :white_check_mark:" },
+    { "conv": "G0LAUNCH", "user": "U0JONAS", "time": "-1d 16:40", "text": "Migration guide is live. Rollback dry run is booked for Monday 10:00." },
+    { "conv": "G0LAUNCH", "user": "U0LENA", "time": "-1d 16:55", "text": "Support macros: 6 of 9 done, rest tomorrow." },
+
+    { "conv": "C0RANDOM", "user": "U0RAVI", "time": "-2d 12:30", "text": "Lunch recommendation near the office: the new ramen place on Bergsgatan. 10/10, would queue again :ramen:", "reactions": [ { "name": "ramen", "users": ["U0MIRA", "U0YUKI", "U0JONAS"] } ] },
+    { "conv": "C0RANDOM", "user": "U0YUKI", "time": "-2d 12:34", "text": "Ramen at 12:30 is a bold choice for someone with a 13:00 review :joy:" },
+    { "conv": "C0RANDOM", "user": "U0YUKI", "time": "-2d 12:40", "text": "Ramen queue energy :ramen:", "files": [ { "path": "gifs/party-confetti.gif", "name": "party-confetti.gif" } ],
+      "reactions": [ { "name": "joy", "users": ["U0RAVI", "U0MIRA"] } ] },
+    { "conv": "C0RANDOM", "user": "U0RAVI", "time": "-2d 12:48", "text": "", "files": [ { "path": "audio/voice-note.mp3", "name": "Voice note", "subtype": "slack_audio", "durationMs": 3000, "transcript": "Okay so the queue is about twenty people but they say ten minutes, I'll report back." } ] },
+    { "conv": "C0RANDOM", "user": "U0JONAS", "time": "-1d 08:15", "text": "Friday playlist thread — drop your one song for the launch-week playlist :notes:",
+      "replies": [
+        { "user": "U0MIRA",  "time": "+5m",  "text": "Something instrumental, I need to focus :sweat_smile:" },
+        { "user": "U0TOMAS", "time": "+12m", "text": "Bossa nova. Non-negotiable." }
+      ] },
+
+    { "conv": "D0MIRA", "user": "U0MIRA", "time": "-1d 09:40", "text": "Hey, do you have 15 min today to look at the empty-state copy with me? Priya's version is close but I want a second pair of eyes." },
+    { "conv": "D0MIRA", "user": "U0ALEX", "time": "-1d 09:52", "text": "Sure — 14:00 works?" },
+    { "conv": "D0MIRA", "user": "U0MIRA", "time": "-1d 09:53", "text": "Perfect :+1:" },
+    { "conv": "D0MIRA", "user": "U0MIRA", "time": "-8m", "text": "Two things before the crit recap goes out:" },
+    { "conv": "D0MIRA", "user": "U0MIRA", "time": "-7m", "text": "1. Are we keeping the illustration on the pricing page?\n2. Yuki needs the hero at 2x — can you export or should I?" },
+
+    { "conv": "D0JONAS", "user": "U0JONAS", "time": "-2d 17:30", "text": "The invite endpoint is idempotent now, so the onboarding reorder is safe from our side." },
+    { "conv": "D0JONAS", "user": "U0ALEX", "time": "-2d 17:35", "text": "Great, thanks. I'll tell Mira." },
+
+    { "conv": "D0LENA", "user": "U0LENA", "time": "-3d 15:10", "text": "FYI: a customer on the enterprise plan asked about SSO audit logs again. Third time this month." },
+    { "conv": "D0LENA", "user": "U0ALEX", "time": "-3d 15:20", "text": "Noted — I'll add it to the Q4 candidates list." },
+
+    { "conv": "D0SAM", "user": "U0SAM", "time": "-5d 21:15", "text": "Nice work on the roadmap deck. Board liked the focus." },
+
+    { "conv": "G0TRIO", "user": "U0MIRA", "time": "-1d 13:05", "text": "Quick sync on the onboarding reorder? Jonas says backend is flexible." },
+    { "conv": "G0TRIO", "user": "U0JONAS", "time": "-1d 13:06", "text": "Flexible is my middle name." },
+    { "conv": "G0TRIO", "user": "U0ALEX", "time": "-1d 13:08", "text": "Let's do it right after the crit tomorrow." }
+  ],
+
+  "unfurls": [
+    { "url": "https://figment.app/lumen/hero-2x", "service": "Figment", "favicon": "icons/figment.png",
+      "title": "Atlas hero — 2x export", "text": "PNG · 2400×1200 · 1.8 MB · shared by Alex Kim", "color": "#7A4DFF",
+      "image": "images/blog-hero.png" },
+    { "url": "https://gitforge.dev/lumen/atlas-web/pull/1490", "service": "GitForge", "favicon": "icons/gitforge.png",
+      "title": "#1490 onboarding: plan picker before invites", "text": "+188 −240 · 14 files · ready for review", "color": "#24292F" }
+  ],
+
+  "ai": {
+    "default": "**Summary**\n\n- The team agreed on the plan and split the follow-ups.\n- Nothing is blocked; two items wait on review.\n\n**Action items**\n- Alex: confirm scope before Friday.",
+    "replies": [
+      { "match": "search index", "text": "**Summary**\n\nJonas moved the search index to the new cluster (~10 min of stale results around 22:00), with no changes needed on mobile. Priya's PR #1482 adopts the palette v3 tokens and mainly needs eyes on the dark theme. The rate limiter now reports its reset time in headers, so clients should stop guessing 60 s. The analytics worker's restarts were traced to the new event batching hitting the memory limit; a fix raising it to 2 GiB shipped.\n\n**Open question**\n- Lena needs confirmation that Atlas 2.0 keeps the CSV export before the blog post goes out — @Alex Kim." },
+      { "match": "palette", "text": "**Summary**\n\nMira shipped palette v3 (primary shifted to a bluer violet for dark mode; neutrals unchanged) and published the Figma tokens. Onboarding proposal B cuts the flow to three steps by moving the plan picker before invites; data and backend both support it, and support asked for a \"Skip for now\" on the invite step. Priya is drafting the new empty states.\n\n**Action items**\n- Mira: add \"Skip for now\" to the invite step.\n- Alex: export the hero illustration at 2x for Yuki." }
+    ]
+  },
+
+  "workflows": [
+    { "trigger": "Ft0SHIP", "title": "Ship a release", "description": "Ask for a release",
+      "author": "U0DEPLOY",
+      "form": { "title": "Ship a release", "submit": "Submit", "close": "Close", "fields": [
+        { "kind": "text", "label": "Version", "placeholder": "e.g. 2.4.1" },
+        { "kind": "paragraph", "label": "Notes", "optional": true },
+        { "kind": "checkboxes", "label": "Checks", "options": ["Tests pass", "Changelog updated"] } ] } },
+    { "trigger": "Ft0PING", "title": "Ping the team", "author": "U0DEPLOY" }
+  ],
+
+  "autoReplies": [
+    { "conv": "D0MIRA",   "user": "U0MIRA",  "afterMs": 1500, "typingMs": 2200, "text": "Amazing, thank you! I'll drop it into the Figment doc :sparkles:" },
+    { "conv": "D0MIRA",   "user": "U0MIRA",  "afterMs": 1200, "typingMs": 1800, "text": "Keeping the illustration then. Recap goes out at 16:00." },
+    { "conv": "C0DESIGN", "user": "U0YUKI",  "afterMs": 1800, "typingMs": 2000, "text": "You're a star, thanks <@U0ALEX>! :tada:" },
+    { "conv": "C0ENG",    "user": "U0LENA",  "afterMs": 1600, "typingMs": 2400, "text": "Perfect, telling both customers now :+1:" },
+    { "conv": "C0RANDOM", "user": "U0RAVI",  "afterMs": 2200, "typingMs": 1600, "text": "Friday mood :raised_hands:" }
+  ]
+}

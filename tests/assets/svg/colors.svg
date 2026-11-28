@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!-- Colour syntaxes, style="" precedence and entities. -->
+<!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd" [
+  <!ENTITY ns "http://www.w3.org/2000/svg">
+]>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" color="#00ff00">
+  <rect x="0" y="0" width="20" height="20" fill="#f00"/>
+  <rect x="20" y="0" width="20" height="20" fill="rgb(0, 0, 255)"/>
+  <rect x="40" y="0" width="20" height="20" fill="rgb(100%, 100%, 0%)"/>
+  <rect x="60" y="0" width="20" height="20" fill="navy"/>
+  <rect x="80" y="0" width="20" height="20" fill="currentColor"/>
+  <rect x="0" y="20" width="20" height="20" fill="blue" style="fill: #ff00ff !important; stroke:none"/>
+  <rect x="20" y="20" width="20" height="20" fill="#ff000080"/>
+  <rect x="40" y="20" width="20" height="20" fill="rgba(0,0,255,0.5)"/>
+  <rect x="60" y="20" width="20" height="20" fill="#0f08"/>
+  <rect x="80" y="20" width="20" height="20" fill="ORANGE"/>
+  <g fill="#00ffff"><rect x="0" y="40" width="20" height="20"/><rect x="20" y="40" width="20" height="20" fill="inherit"/></g>
+  <rect x="40" y="40" width="20" height="20" fill="&#x23;ff0000"/>
+  <![CDATA[ <rect x="60" y="40" width="20" height="20" fill="#000"/> ]]>
+  <rect x="80" y="40" width="20" height="20" fill="#000" display="none"/>
+  <rect x="0" y="60" width="20" height="20" fill="#000" visibility="hidden"/>
+  <rect x="20" y="60" width="20" height="20"/>
+</svg>

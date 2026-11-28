@@ -1,0 +1,75 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  macOS bundle Info.plist for msga — unchanged across versions, so every
+  binary is the same app to macOS (bundle id com.nisdos.msga: notifications,
+  Keychain prompts, LaunchServices, the Homebrew cask). CMake fills the
+  MACOSX_BUNDLE placeholders below (screens/shell/CMakeLists.txt).
+
+  The CFBundleURLTypes block registers msga.app as the system handler for the
+  "msga://" URL scheme: the Slack OAuth flow redirects the browser to
+  msga://oauth/callback?code=… ; without this declaration macOS has no handler
+  and the browser reports "unknown protocol".
+-->
+<plist version="1.0">
+<dict>
+    <key>CFBundleDevelopmentRegion</key>
+    <string>en</string>
+    <key>CFBundleExecutable</key>
+    <string>${MACOSX_BUNDLE_EXECUTABLE_NAME}</string>
+    <key>CFBundleGetInfoString</key>
+    <string>${MACOSX_BUNDLE_INFO_STRING}</string>
+    <key>CFBundleIconFile</key>
+    <string>${MACOSX_BUNDLE_ICON_FILE}</string>
+    <!-- Names the icon inside the compiled asset catalog (Assets.car). macOS 26
+         (Tahoe) reads this to render the Icon Composer ".icon"; older macOS falls
+         back to CFBundleIconFile above. Harmless when no Assets.car ships. -->
+    <key>CFBundleIconName</key>
+    <string>${MACOSX_BUNDLE_ICON_FILE}</string>
+    <key>CFBundleIdentifier</key>
+    <string>${MACOSX_BUNDLE_GUI_IDENTIFIER}</string>
+    <key>CFBundleInfoDictionaryVersion</key>
+    <string>6.0</string>
+    <key>CFBundleLongVersionString</key>
+    <string>${MACOSX_BUNDLE_LONG_VERSION_STRING}</string>
+    <key>CFBundleName</key>
+    <string>${MACOSX_BUNDLE_BUNDLE_NAME}</string>
+    <key>CFBundleDisplayName</key>
+    <string>${MACOSX_BUNDLE_DISPLAY_NAME}</string>
+    <key>CFBundlePackageType</key>
+    <string>APPL</string>
+    <key>CFBundleShortVersionString</key>
+    <string>${MACOSX_BUNDLE_SHORT_VERSION_STRING}</string>
+    <key>CFBundleVersion</key>
+    <string>${MACOSX_BUNDLE_BUNDLE_VERSION}</string>
+    <key>CFBundleSignature</key>
+    <string>????</string>
+    <key>NSPrincipalClass</key>
+    <string>NSApplication</string>
+    <key>NSHighResolutionCapable</key>
+    <true/>
+    <key>LSMinimumSystemVersion</key>
+    <string>${MSGA_MACOS_MIN_VERSION}</string>
+
+    <!-- Shown in the system prompt the first time voice input records.
+         Without it macOS kills the app on microphone access. Signed releases
+         also need the audio-input entitlement (msga.entitlements). -->
+    <key>NSMicrophoneUsageDescription</key>
+    <string>msga uses the microphone for voice input when you dictate a message.</string>
+
+    <!-- Register the msga:// URL scheme (OAuth redirect handler). -->
+    <key>CFBundleURLTypes</key>
+    <array>
+        <dict>
+            <key>CFBundleTypeRole</key>
+            <string>Viewer</string>
+            <key>CFBundleURLName</key>
+            <string>${MACOSX_BUNDLE_GUI_IDENTIFIER}.oauth</string>
+            <key>CFBundleURLSchemes</key>
+            <array>
+                <string>msga</string>
+            </array>
+        </dict>
+    </array>
+</dict>
+</plist>
